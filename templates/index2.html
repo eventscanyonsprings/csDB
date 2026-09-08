@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canyon Springs Residents</title>
+<style>
+:root{--ink:#173042;--muted:#61727d;--paper:#f4f0e8;--panel:#fffdf8;--line:#d7d8d1;--teal:#1f7271;--coral:#e17962;--gold:#d6a84f;--shadow:0 4px 12px #17304212}
+*{box-sizing:border-box}
+body{margin:0;color:var(--ink);background:#eef1f0;font:13px/1.3 "Segoe UI",Tahoma,sans-serif}
+main{max-width:1100px;margin:auto;padding:12px}
+h1,h2,h3{margin:0;font-family:"Trebuchet MS","Segoe UI",sans-serif;font-weight:600}
+.masthead{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid var(--ink);padding-bottom:8px;margin-bottom:10px}
+.eyebrow{font:700 9px system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--teal)}
+h1{font-size:22px;line-height:1}
+.date{font:11px system-ui,sans-serif;color:var(--muted);text-align:right;display:flex;align-items:center;gap:12px}
+.search{position:relative;margin-bottom:10px}
+.search input{width:100%;padding:8px 12px;border:1px solid var(--line);border-radius:3px;background:#fff;font-size:14px;box-shadow:var(--shadow)}
+.results{position:absolute;z-index:5;left:0;right:0;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);max-height:200px;overflow-y:auto}
+.results button{display:flex;width:100%;justify-content:space-between;border:0;border-bottom:1px solid var(--line);background:none;padding:8px 12px;text-align:left;color:var(--ink);cursor:pointer;font-size:12px}
+.results button:hover{background:#edf5f1}
+.profile{display:none}.profile.active{display:block}
+.hero{display:flex;justify-content:space-between;align-items:center;background:var(--ink);color:white;padding:8px 14px;border-radius:3px;margin-bottom:10px;box-shadow:var(--shadow)}
+.hero h2{font-size:20px;color:#fff}
+.hero .meta{display:flex;gap:16px;font:11px system-ui,sans-serif;align-items:center}
+.hero strong{font-size:14px;color:#f6d58a;margin-left:4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.section{background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:10px 12px;box-shadow:0 2px 6px #17304208}
+.wide{grid-column:1/-1}
+.section-head{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:6px;margin-bottom:8px}
+.section h3{font-size:14px;color:var(--teal)}
+label{display:block;font:700 10px system-ui,sans-serif;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:4px 0 2px}
+input,textarea{width:100%;border:1px solid var(--line);background:#fff;padding:5px 7px;border-radius:2px;color:var(--ink);font:13px "Segoe UI",sans-serif}
+textarea{min-height:38px;resize:vertical}
+.row{display:grid;gap:8px;align-items:start;margin-bottom:8px;border-bottom:1px dashed var(--line);padding-bottom:8px}
+.row.resident{grid-template-columns:1fr 1fr auto 50px 1fr 1fr 1fr auto}
+.row.contact{grid-template-columns:1fr 1fr 1.2fr 1fr 1fr 1fr auto}
+.row.vehicle{grid-template-columns:1.5fr .6fr 1fr auto}
+.row.unit{grid-template-columns:1fr 1fr 1fr}
+.row.owner{grid-template-columns:1fr 1.5fr 1fr 1fr 1fr}
+.row>div{min-width:0}
+.check{display:flex;align-items:center;gap:4px;font:11px system-ui,sans-serif;color:var(--ink);white-space:nowrap;margin-top:18px}
+.check input{width:auto;margin:0}
+.btn{border:1px solid var(--teal);background:var(--teal);color:white;padding:4px 10px;border-radius:2px;font:700 11px system-ui,sans-serif;cursor:pointer;white-space:nowrap}
+.btn.ghost{background:transparent;color:var(--teal)}
+.remove{border:0;background:none;color:var(--coral);cursor:pointer;font:700 11px system-ui,sans-serif;margin-top:18px;padding:0}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.chip-input{width:90px}
+.owner-fields{display:none}.owner-fields.visible{display:block}
+.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+.suite-actions{display:flex;gap:6px}
+.status{font:12px system-ui,sans-serif;color:var(--teal);align-self:center}
+.empty{color:var(--muted);padding:6px 0;font-style:italic;font-size:12px}
+.menu{position:relative;display:inline-block}.menu summary{cursor:pointer;color:var(--teal);font-weight:700}.menu a{position:absolute;right:0;top:100%;width:180px;padding:6px 8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);text-decoration:none;font-size:12px;z-index:10;box-shadow:var(--shadow)}
+.btn:disabled{cursor:not-allowed;opacity:.45}
+@media(max-width:850px){.grid,.row.resident,.row.contact,.row.vehicle,.row.owner{grid-template-columns:1fr 1fr}.wide{grid-column:auto}}
+@media print{body{background:#fff;color:#000}.masthead,.search,#empty,.actions,.btn,.remove,.section-head button{display:none!important}.profile,.profile.active{display:block}.hero{color:#000;background:#fff;border-bottom:2px solid #000;box-shadow:none;padding:0 0 6px}.hero strong{color:#000}.grid{display:block}.section{box-shadow:none;border:0;border-bottom:1px solid #bbb;padding:6px 0}.owner-fields{display:block!important}.row{break-inside:avoid}}
+</style>
+</head>
+<body><main>
+<header class="masthead">
+  <div><div class="eyebrow">Canyon Springs · Resident Directory</div><h1>Welcome home.</h1></div>
+  <div class="date"><span id="today"></span><details class="menu"><summary>Menu</summary><a href="/export/spreadsheet">Export All Residents</a></details></div>
+</header>
+<div class="search"><input id="search" autocomplete="off" placeholder="Search unit number or resident surname…"><div id="results" class="results"></div></div>
+<div id="empty" class="empty">Search for a unit to view its resident profile, or enter a new unit number above.</div>
+<section id="profile" class="profile">
+<div class="hero">
+  <div><div class="eyebrow" style="color:#f6d58a">Unit Profile</div><h2>#<span id="suite-title">New</span></h2></div>
+  <div class="meta">
+    <div>ENTERCODE<strong id="hero-code">—</strong></div>
+    <div>KEY SET<strong id="hero-key">—</strong></div>
+  </div>
+  <div class="suite-actions">
+    <button class="btn" onclick="printUnitRecord()">Print</button>
+    <button id="top-save" class="btn" onclick="saveSuite()" disabled>Save</button>
+    <button class="btn ghost" onclick="closeSuite()">Close</button>
+    <button id="top-edit" class="btn ghost" onclick="editUnit()">Edit</button>
+  </div>
+</div>
+<div class="grid">
+  <section class="section wide">
+    <div class="section-head"><h3>Unit details</h3></div>
+    <div class="row unit">
+      <div><label>Unit number</label><input id="suite-id" maxlength="4" placeholder="602"></div>
+      <div><label>Door Entercode</label><input id="entercode"></div>
+      <div><label>Backup key set #</label><input id="keyset"></div>
+    </div>
+  </section>
+  <section class="section wide">
+    <div class="section-head"><h3>Residents</h3><button class="btn ghost" onclick="addResident()">+ Add resident</button></div>
+    <div id="residents"></div>
+  </section>
+  <section class="section">
+    <div class="section-head"><h3>Vehicles</h3><button class="btn ghost" onclick="addVehicle()">+ Add vehicle</button></div>
+    <div id="vehicles"></div>
+  </section>
+  <section class="section">
+    <div class="section-head"><h3>Parking & lockers</h3></div>
+    <div style="display:flex;gap:12px">
+      <div style="flex:1">
+        <label>Parking Spots</label>
+        <div id="parking" class="chips"></div>
+        <button class="btn ghost" onclick="addChip('parking')">+ Add spot</button>
+      </div>
+      <div style="flex:1">
+        <label>Lockers</label>
+        <div id="lockers" class="chips"></div>
+        <button class="btn ghost" onclick="addChip('lockers')">+ Add locker</button>
+      </div>
+    </div>
+  </section>
+  <section class="section wide">
+    <div class="section-head">
+      <h3>Owner details</h3>
+      <label class="check" style="margin:0"><input id="owner-resident" type="checkbox" checked onchange="toggleOwner()"> Owner lives in unit</label>
+    </div>
+    <div id="owner-fields" class="owner-fields">
+      <div class="row owner">
+        <div><label>Name</label><input data-owner="owner_name"></div>
+        <div><label>Address</label><input data-owner="address"></div>
+        <div><label>Cell Phone</label><input data-phone data-owner="phone_cell" inputmode="tel" pattern="[0-9+\-]*"></div>
+        <div><label>Home Phone</label><input data-phone data-owner="phone_home" inputmode="tel" pattern="[0-9+\-]*"></div>
+        <div><label>Business Phone</label><input data-phone data-owner="phone_business" inputmode="tel" pattern="[0-9+\-]*"></div>
+      </div>
+    </div>
+  </section>
+  <section class="section wide">
+    <div class="section-head"><h3>Emergency contacts</h3><button class="btn ghost" onclick="addContact()">+ Add contact</button></div>
+    <div id="contacts"></div>
+  </section>
+</div>
+<div class="actions">
+  <span id="status" class="status"></span>
+  <button class="btn" onclick="printUnitRecord()">Print</button>
+  <button id="bottom-save" class="btn" onclick="saveSuite()" disabled>Save</button>
+  <button class="btn ghost" onclick="closeSuite()">Close</button>
+  <button id="bottom-edit" class="btn ghost" onclick="editUnit()">Edit</button>
+</div>
+</section>
+</main>
+<script>
+const $=s=>document.querySelector(s), esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+let current={residents:[],vehicles:[],emergency_contacts:[],parking_spots:[],lockers:[],owner:{}};
+let isDirty=false, isEditing=false;
+function setEditMode(v){isEditing=v;document.querySelectorAll('#profile input,#profile textarea,#profile .section-head button,#profile .remove').forEach(c=>c.disabled=!v);$('#top-edit').style.display=v?'none':'inline-block';$('#bottom-edit').style.display=v?'none':'inline-block';$('#top-save').disabled=!v||!isDirty;$('#bottom-save').disabled=!v||!isDirty}
+function setDirty(v=true){isDirty=v;$('#top-save').disabled=!isEditing||!v;$('#bottom-save').disabled=!isEditing||!v}
+$('#today').textContent=new Intl.DateTimeFormat('en',{dateStyle:'medium'}).format(new Date());
+$('#search').addEventListener('input',async e=>{let q=e.target.value.trim();if(!q){$('#results').innerHTML='';return}let r=await fetch('/api/search?q='+encodeURIComponent(q));let data=await r.json();$('#results').innerHTML=data.map(x=>`<button onclick="loadSuite('${esc(x.suite_id)}')"><b>Unit ${esc(x.suite_id)}</b><small>${esc(x.name)||'No residents saved'}</small></button>`).join('')||'<div class="empty">No saved unit found. Press Enter to start a new record.</div>'});
+$('#search').addEventListener('keydown',e=>{if(e.key==='Enter'&&!$('#results').querySelector('button'))newSuite(e.target.value)});
+async function loadSuite(id){let r=await fetch('/suite/'+encodeURIComponent(id),{headers:{Accept:'application/json'}});if(!r.ok)return newSuite(id);fill(await r.json(),false);$('#results').innerHTML='';$('#search').value=id}
+function newSuite(id){fill({suite_id:(id||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4),owner_is_resident:true,residents:[],vehicles:[],emergency_contacts:[],parking_spots:[],lockers:[],owner:{}},true);$('#results').innerHTML=''}
+function fill(data,editing){current=data;setDirty(false);$('#empty').style.display='none';$('#profile').classList.add('active');$('#suite-id').value=data.suite_id||'';$('#suite-title').textContent=data.suite_id||'New';$('#entercode').value=data.entercode||'';$('#keyset').value=data.backup_keyset_num||'';$('#hero-code').textContent=data.entercode||'—';$('#hero-key').textContent=data.backup_keyset_num||'—';$('#owner-resident').checked=data.owner_is_resident!==false;$('#owner-fields').classList.toggle('visible',!$('#owner-resident').checked);renderAll();setEditMode(editing)}
+function renderAll(){let d=current;$('#residents').innerHTML='';(d.residents||[]).forEach((x,i)=>addResident(x,i));$('#vehicles').innerHTML='';(d.vehicles||[]).forEach((x,i)=>addVehicle(x,i));$('#contacts').innerHTML='';(d.emergency_contacts||[]).forEach((x,i)=>addContact(x,i));['parking','lockers'].forEach(k=>{$('#'+k).innerHTML='';(d[k+'_spots']||d[k]||[]).forEach(x=>addChip(k,x))});setDirty(false)}
+function addResident(x={}){let el=document.createElement('div');el.className='row resident';el.innerHTML=`<div><label>First name</label><input data-field="first_name" value="${esc(x.first_name)}"></div><div><label>Last name</label><input data-field="last_name" value="${esc(x.last_name)}"></div><label class="check"><input data-field="is_child" type="checkbox" ${x.is_child?'checked':''} onchange="this.closest('.row').querySelector('[data-field=child_age]').disabled=!this.checked"> Child?</label><div><label>Age</label><input data-field="child_age" type="number" value="${esc(x.child_age)}" ${x.is_child?'':'disabled'}></div><div><label>Cell Phone</label><input data-phone data-field="phone_cell" inputmode="tel" pattern="[0-9+\-]*" value="${esc(x.phone_cell)}"></div><div><label>Home Phone</label><input data-phone data-field="phone_home" inputmode="tel" pattern="[0-9+\-]*" value="${esc(x.phone_home)}"></div><div><label>Business Phone</label><input data-phone data-field="phone_business" inputmode="tel" pattern="[0-9+\-]*" value="${esc(x.phone_business)}"></div><button class="remove" onclick="this.parentElement.remove()">✕</button><div style="grid-column:1/-1"><label>Medical notes</label><textarea data-field="medical_notes" rows="1">${esc(x.medical_notes)}</textarea></div>`;$('#residents').append(el);setDirty()}
+function addVehicle(x={}){let el=document.createElement('div');el.className='row vehicle';el.innerHTML=`<div><label>Make & model</label><input data-field="make_model" value="${esc(x.make_model)}"></div><div><label>Year</label><input data-field="year" value="${esc(x.year)}"></div><div><label>License plate</label><input data-field="plate_number" value="${esc(x.plate_number)}"></div><button class="remove" onclick="this.parentElement.remove()">✕</button>`;$('#vehicles').append(el);setDirty()}
+function addContact(x={}){let el=document.createElement('div');el.className='row contact';el.innerHTML=`<div><label>Name</label><input data-field="contact_name" value="${esc(x.contact_name)}"></div><div><label>Relationship</label><input data-field="relationship" value="${esc(x.relationship)}"></div><div><label>Address</label><input data-field="address" value="${esc(x.address)}"></div><div><label>Cell Phone</label><input data-phone data-field="phone_cell" inputmode="tel" pattern="[0-9+\-]*" value="${esc(x.phone_cell)}"></div><div><label>Home Phone</label><input data-phone data-field="phone_home" inputmode="tel" pattern="[0-9+\-]*" value="${esc(x.phone_home)}"></div><div><label>Business Phone</label><input data-phone data-field="phone_business" inputmode="tel" pattern="[0-9+\-]*" value="${esc(x.phone_business)}"></div><button class="remove" onclick="this.parentElement.remove()">✕</button>`;$('#contacts').append(el);setDirty()}
+function addChip(type,value=''){let el=document.createElement('div');el.innerHTML=`<input class="chip-input" data-chip="${type}" placeholder="Number" value="${esc(value)}">`;$('#'+type).append(el);setDirty()}
+function toggleOwner(){$('#owner-fields').classList.toggle('visible',!$('#owner-resident').checked)}
+function editUnit(){setEditMode(true)}
+document.addEventListener('input',e=>{if(e.target.matches('[data-phone]'))e.target.value=e.target.value.replace(/[^0-9+\-]/g,'');if(e.target.closest('#profile'))setDirty()})
+document.addEventListener('change',e=>{if(e.target.closest('#profile'))setDirty()})
+document.addEventListener('click',e=>{if(e.target.closest('#profile')&&e.target.matches('.remove'))setDirty()})
+function collect(){let suite={suite_id:$('#suite-id').value.trim().toUpperCase(),entercode:$('#entercode').value,backup_keyset_num:$('#keyset').value,owner_is_resident:$('#owner-resident').checked,residents:[],vehicles:[],emergency_contacts:[],parking_spots:[],lockers:[],owner:{}};document.querySelectorAll('#residents .row').forEach(row=>{let o={};row.querySelectorAll('[data-field]').forEach(i=>o[i.dataset.field]=i.type==='checkbox'?i.checked:i.value);o.child_age=o.child_age?Number(o.child_age):null;suite.residents.push(o)});['vehicles','emergency_contacts'].forEach(k=>document.querySelectorAll('#'+(k==='vehicles'?'vehicles':'contacts')+' .row').forEach(row=>{let o={};row.querySelectorAll('[data-field]').forEach(i=>o[i.dataset.field]=i.value);suite[k].push(o)}));['parking','lockers'].forEach(k=>suite[k==='parking'?'parking_spots':'lockers']=[...document.querySelectorAll('[data-chip='+k+']')].map(i=>i.value.trim()).filter(Boolean));document.querySelectorAll('[data-owner]').forEach(i=>suite.owner[i.dataset.owner]=i.value);document.querySelectorAll('[data-phone]').forEach(i=>i.value=i.value.replace(/[^0-9+\-]/g,''));return suite}
+function clearScreen(){current={residents:[],vehicles:[],emergency_contacts:[],parking_spots:[],lockers:[],owner:{}};setDirty(false);$('#profile').classList.remove('active');$('#empty').style.display='block';$('#search').value='';$('#results').innerHTML=''}
+function printUnitRecord(){if(!$('#profile').classList.contains('active')){setStatus('Open a unit before creating a PDF.');return}window.location.href='/suite/pdf/'+encodeURIComponent($('#suite-id').value.trim())}
+function closeSuite(){if(isDirty&&!window.confirm('Changes have been made to this suite. Close without saving?'))return;clearScreen()}
+async function saveSuite(){let data=collect();if(!/^[A-Z0-9]{3,4}$/.test(data.suite_id)){setStatus('Enter a 3–4 character unit number.');return}setStatus('Saving…');let r=await fetch('/suite/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(r.ok){clearScreen()}else setStatus(await r.text())}
+function setStatus(x){$('#status').textContent=x;setTimeout(()=>$('#status').textContent='',4000)}
+</script></body></html>
