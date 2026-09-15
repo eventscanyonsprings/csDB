@@ -7,123 +7,83 @@ import (
 	"embed"
 	"encoding/csv"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"canyon-springs-residents/store"
 
 	"github.com/go-pdf/fpdf"
 	_ "modernc.org/sqlite"
 )
 
-//go:embed templates/index.html templates/index2.html templates/index3.html
+//go:embed templates/login.html templates/units.html templates/edit.html templates/fire.html templates/admin.html
 var templateFS embed.FS
 
 var suitePattern = regexp.MustCompile(`^[A-Za-z0-9]{3,4}$`)
 
 type App struct {
 	db       *sql.DB
-	tpl      *template.Template
-	testTpl2 *template.Template
-	testTpl  *template.Template
+	loginTpl *template.Template
+	unitsTpl *template.Template
+	editTpl  *template.Template
+	fireTpl  *template.Template
+	adminTpl *template.Template
 }
 
-type Suite struct {
-	SuiteID           string             `json:"suite_id"`
-	DateUpdated       string             `json:"date_updated"`
-	EnterCode         string             `json:"entercode"`
-	BackupKeysetNum   string             `json:"backup_keyset_num"`
-	OwnerIsResident   bool               `json:"owner_is_resident"`
-	Residents         []Resident         `json:"residents"`
-	EmergencyContacts []EmergencyContact `json:"emergency_contacts"`
-	Vehicles          []Vehicle          `json:"vehicles"`
-	ParkingSpots      []string           `json:"parking_spots"`
-	Lockers           []string           `json:"lockers"`
-	Owner             Owner              `json:"owner"`
-}
-
-type Resident struct {
-	FirstName     string `json:"first_name"`
-	LastName      string `json:"last_name"`
-	IsChild       bool   `json:"is_child"`
-	ChildAge      *int   `json:"child_age"`
-	PhoneCell     string `json:"phone_cell"`
-	PhoneHome     string `json:"phone_home"`
-	PhoneBusiness string `json:"phone_business"`
-	MedicalNotes  string `json:"medical_notes"`
-}
-
-type EmergencyContact struct {
-	ContactName   string `json:"contact_name"`
-	Relationship  string `json:"relationship"`
-	Address       string `json:"address"`
-	PhoneCell     string `json:"phone_cell"`
-	PhoneHome     string `json:"phone_home"`
-	PhoneBusiness string `json:"phone_business"`
-}
-
-type Vehicle struct {
-	MakeModel   string `json:"make_model"`
-	Year        string `json:"year"`
-	PlateNumber string `json:"plate_number"`
-}
-
-type Owner struct {
-	OwnerName     string `json:"owner_name"`
-	Address       string `json:"address"`
-	PhoneCell     string `json:"phone_cell"`
-	PhoneHome     string `json:"phone_home"`
-	PhoneBusiness string `json:"phone_business"`
-}
+type Suite = store.Suite
+type Resident = store.Resident
+type EmergencyContact = store.EmergencyContact
+type Vehicle = store.Vehicle
+type Owner = store.Owner
 
 type SearchResult struct {
-	SuiteID string `json:"suite_id"`
-	Name    string `json:"name"`
+	SuiteID   string `json:"suite_id"`
+	Name      string `json:"name"`
+	OwnerName string `json:"owner_name"`
 }
 
 func main() {
-	seed := flag.Bool("seed", false, "populate the database with deterministic dummy data and exit")
-	flag.Parse()
 	databasePath := os.Getenv("CANYON_DB")
 	if databasePath == "" {
 		databasePath = "canyon-springs.db"
 	}
-	db, err := sql.Open("sqlite", databasePath)
+	db, err := store.Open(databasePath)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
-	if err := initializeDatabase(db); err != nil {
-		log.Fatal(err)
-	}
 
-	tpl := template.Must(template.ParseFS(templateFS, "templates/index.html"))
-	testTpl2 := template.Must(template.ParseFS(templateFS, "templates/index2.html"))
-	testTpl := template.Must(template.ParseFS(templateFS, "templates/index3.html"))
-	app := &App{db: db, tpl: tpl, testTpl2: testTpl2, testTpl: testTpl}
-	if *seed {
-		if err := seedDatabase(app); err != nil {
-			log.Fatal(err)
-		}
-		log.Printf("seeded 132 dummy apartments in %s", databasePath)
-		return
-	}
+	loginTpl := template.Must(template.ParseFS(templateFS, "templates/login.html"))
+	unitsTpl := template.Must(template.ParseFS(templateFS, "templates/units.html"))
+	editTpl := template.Must(template.ParseFS(templateFS, "templates/edit.html"))
+	fireTpl := template.Must(template.ParseFS(templateFS, "templates/fire.html"))
+	adminTpl := template.Must(template.ParseFS(templateFS, "templates/admin.html"))
+	app := &App{db: db, loginTpl: loginTpl, unitsTpl: unitsTpl, editTpl: editTpl, fireTpl: fireTpl, adminTpl: adminTpl}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", app.handleIndex)
-	mux.HandleFunc("/index2.html", app.handleTestIndex2)
-	mux.HandleFunc("/index3.html", app.handleTestIndex)
-	mux.HandleFunc("/api/search", app.handleSearch)
-	mux.HandleFunc("/api/units", app.handleUnits)
-	mux.HandleFunc("/export/spreadsheet", app.handleSpreadsheet)
-	mux.HandleFunc("/suite/pdf/", app.handlePDF)
-	mux.HandleFunc("/suite/", app.handleSuite)
-	mux.HandleFunc("/suite/save", app.handleSave)
+	mux.Handle("/login", loadUser(app)(http.HandlerFunc(app.handleLogin)))
+	mux.Handle("/logout", loadUser(app)(http.HandlerFunc(app.handleLogout)))
+	mux.Handle("/units", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleUnitsPage))))
+	mux.Handle("/edit", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleEditPage))))
+	mux.Handle("/report/fire", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleFirePage))))
+	mux.Handle("/report/fire.json", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleFireJSON))))
+	mux.Handle("/admin", loadUser(app)(requireAdmin(app)(http.HandlerFunc(app.handleAdminPage))))
+	mux.Handle("/admin/users", loadUser(app)(requireAdmin(app)(http.HandlerFunc(app.handleAdminUsers))))
+	mux.Handle("/admin/users/", loadUser(app)(requireAdmin(app)(http.HandlerFunc(app.handleAdminUserAction))))
+	mux.Handle("/", loadUser(app)(http.HandlerFunc(app.handleIndex)))
+	mux.Handle("/api/search", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleSearch))))
+	mux.Handle("/api/units", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleUnits))))
+	mux.Handle("/export/spreadsheet", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleSpreadsheet))))
+	mux.Handle("/suite/pdf/", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handlePDF))))
+	mux.Handle("/suite/", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleSuite))))
+	mux.Handle("/suite/save", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleSave))))
 
 	address := os.Getenv("CANYON_ADDR")
 	if address == "" {
@@ -134,74 +94,227 @@ func main() {
 	log.Fatal(server.ListenAndServe())
 }
 
-func initializeDatabase(db *sql.DB) error {
-	_, err := db.Exec(`PRAGMA foreign_keys = ON;
-CREATE TABLE IF NOT EXISTS suites (
-	suite_id TEXT PRIMARY KEY, date_updated TEXT, entercode TEXT,
-	backup_keyset_num TEXT, owner_is_resident BOOLEAN NOT NULL DEFAULT 1
-);
-CREATE TABLE IF NOT EXISTS residents (
-	id INTEGER PRIMARY KEY AUTOINCREMENT, suite_id TEXT NOT NULL REFERENCES suites(suite_id) ON DELETE CASCADE,
-	first_name TEXT, last_name TEXT, is_child BOOLEAN NOT NULL DEFAULT 0, child_age INTEGER,
-	phone_cell TEXT, phone_home TEXT, phone_business TEXT, medical_notes TEXT
-);
-CREATE TABLE IF NOT EXISTS emergency_contacts (
-	id INTEGER PRIMARY KEY AUTOINCREMENT, suite_id TEXT NOT NULL REFERENCES suites(suite_id) ON DELETE CASCADE,
-	contact_name TEXT, relationship TEXT, address TEXT, phone_cell TEXT, phone_home TEXT, phone_business TEXT, medical_notes TEXT
-);
-CREATE TABLE IF NOT EXISTS vehicles (
-	id INTEGER PRIMARY KEY AUTOINCREMENT, suite_id TEXT NOT NULL REFERENCES suites(suite_id) ON DELETE CASCADE,
-	make_model TEXT, year TEXT, plate_number TEXT
-);
-CREATE TABLE IF NOT EXISTS parking_spots (
-	id INTEGER PRIMARY KEY AUTOINCREMENT, suite_id TEXT NOT NULL REFERENCES suites(suite_id) ON DELETE CASCADE, spot_number TEXT
-);
-CREATE TABLE IF NOT EXISTS lockers (
-	id INTEGER PRIMARY KEY AUTOINCREMENT, suite_id TEXT NOT NULL REFERENCES suites(suite_id) ON DELETE CASCADE, locker_number TEXT
-);
-CREATE TABLE IF NOT EXISTS owners (
-	suite_id TEXT PRIMARY KEY REFERENCES suites(suite_id) ON DELETE CASCADE, owner_name TEXT, address TEXT,
-	phone_cell TEXT, phone_home TEXT, phone_business TEXT
-);`)
-	if err != nil {
-		return err
-	}
-	var residentMedicalNotesColumn string
-	err = db.QueryRow(`SELECT name FROM pragma_table_info('residents') WHERE name='medical_notes'`).Scan(&residentMedicalNotesColumn)
-	if err == sql.ErrNoRows {
-		_, err = db.Exec(`ALTER TABLE residents ADD COLUMN medical_notes TEXT`)
-	}
-	return err
-}
-
 func (app *App) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
-	if err := app.tpl.Execute(w, nil); err != nil {
+	if userCount(app) == 0 {
+		http.Redirect(w, r, "/units", http.StatusFound)
+		return
+	}
+	http.Redirect(w, r, "/login", http.StatusFound)
+}
+
+func (app *App) handleLogin(w http.ResponseWriter, r *http.Request) {
+	log.Printf("handleLogin: method=%s", r.Method)
+	if r.Method == http.MethodPost {
+		username := strings.TrimSpace(r.FormValue("username"))
+		password := r.FormValue("password")
+		log.Printf("handleLogin: username=%q", username)
+		if username == "" || password == "" {
+			app.loginTpl.Execute(w, map[string]any{"error": "Username and password are required."})
+			return
+		}
+		count := userCount(app)
+		log.Printf("handleLogin: userCount=%d", count)
+		if count == 0 {
+			app.loginTpl.Execute(w, map[string]any{"error": "No users configured. Use tools/create-admin to create one."})
+			return
+		}
+		found, isAdm, err := store.FindUser(r.Context(), app.db, username, password)
+		log.Printf("handleLogin: found=%v isAdmin=%v err=%v", found, isAdm, err)
+		if err != nil || !found {
+			app.loginTpl.Execute(w, map[string]any{"error": "Invalid username or password."})
+			return
+		}
+		token, err := store.CreateSession(r.Context(), app.db, username)
+		log.Printf("handleLogin: session created err=%v", err)
+		if err != nil {
+			app.loginTpl.Execute(w, map[string]any{"error": "Could not create session."})
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 7 * 24 * 60 * 60})
+		http.Redirect(w, r, "/units", http.StatusFound)
+		return
+	}
+	app.loginTpl.Execute(w, nil)
+}
+
+func (app *App) handleLogout(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie(sessionCookie)
+	if err == nil && cookie.Value != "" {
+		store.DeleteSession(r.Context(), app.db, cookie.Value)
+	}
+	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1})
+	http.Redirect(w, r, "/login", http.StatusFound)
+}
+
+func (app *App) handleAdminPage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.NotFound(w, r)
+		return
+	}
+	users, err := store.ListUsers(r.Context(), app.db)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	app.adminTpl.Execute(w, map[string]any{"users": users, "currentUser": getUser(r)})
+}
+
+func (app *App) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	username := strings.TrimSpace(r.FormValue("username"))
+	password := r.FormValue("password")
+	isAdmin := r.FormValue("is_admin") == "1"
+	if username == "" || password == "" {
+		http.Error(w, "Username and password are required.", http.StatusBadRequest)
+		return
+	}
+	exists, _ := store.UserExists(r.Context(), app.db, username)
+	if exists {
+		http.Error(w, "User already exists.", http.StatusConflict)
+		return
+	}
+	if err := store.CreateUser(r.Context(), app.db, username, password, isAdmin); err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	http.Redirect(w, r, "/admin", http.StatusFound)
+}
+
+func (app *App) handleAdminUserAction(w http.ResponseWriter, r *http.Request) {
+	prefix := "/admin/users/"
+	if !strings.HasPrefix(r.URL.Path, prefix) {
+		http.NotFound(w, r)
+		return
+	}
+	rest := strings.TrimPrefix(r.URL.Path, prefix)
+	username := strings.Trim(strings.TrimSuffix(rest, "/toggle-admin"), "/")
+	if username == "" || strings.Contains(username, "/") {
+		http.NotFound(w, r)
+		return
+	}
+	currentUser := getUser(r)
+	switch {
+	case strings.HasSuffix(rest, "/toggle-admin"):
+		if username == currentUser {
+			http.Error(w, "You cannot change your own admin status.", http.StatusForbidden)
+			return
+		}
+		admin, _ := store.IsAdmin(r.Context(), app.db, username)
+		store.SetAdmin(r.Context(), app.db, username, !admin)
+	case strings.HasSuffix(rest, "/password"):
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST required", http.StatusMethodNotAllowed)
+			return
+		}
+		password := r.FormValue("password")
+		if password == "" {
+			http.Error(w, "Password is required.", http.StatusBadRequest)
+			return
+		}
+		store.UpdatePassword(r.Context(), app.db, username, password)
+	case r.Method == http.MethodDelete || r.Method == http.MethodPost && strings.HasSuffix(rest, "/delete"):
+		if username == currentUser {
+			http.Error(w, "You cannot delete your own account.", http.StatusForbidden)
+			return
+		}
+		store.DeleteUser(r.Context(), app.db, username)
+	default:
+		http.NotFound(w, r)
+		return
+	}
+	if r.Header.Get("Accept") == "application/json" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, "/admin", http.StatusFound)
+}
+
+func (app *App) handleUnitsPage(w http.ResponseWriter, r *http.Request) {
+	if err := app.unitsTpl.Execute(w, nil); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
-func (app *App) handleTestIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/index3.html" {
-		http.NotFound(w, r)
-		return
-	}
-	if err := app.testTpl.Execute(w, nil); err != nil {
+func (app *App) handleEditPage(w http.ResponseWriter, r *http.Request) {
+	if err := app.editTpl.Execute(w, nil); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
-func (app *App) handleTestIndex2(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/index2.html" {
-		http.NotFound(w, r)
-		return
-	}
-	if err := app.testTpl2.Execute(w, nil); err != nil {
+func (app *App) handleFirePage(w http.ResponseWriter, r *http.Request) {
+	if err := app.fireTpl.Execute(w, nil); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+type fireResident struct {
+	Name          string `json:"name"`
+	PhoneCell     string `json:"phone_cell"`
+	PhoneHome     string `json:"phone_home"`
+	PhoneBusiness string `json:"phone_business"`
+	FireNotes     string `json:"fire_notes"`
+}
+
+type fireUnit struct {
+	SuiteID           string             `json:"suite_id"`
+	Residents         []fireResident     `json:"residents"`
+	EmergencyContacts []EmergencyContact `json:"emergency_contacts"`
+}
+
+func (app *App) handleFireJSON(w http.ResponseWriter, r *http.Request) {
+	rows, err := app.db.QueryContext(r.Context(), `SELECT suite_id FROM suites`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	report := []fireUnit{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		suite, err := app.loadSuite(r.Context(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		unit := fireUnit{SuiteID: suite.SuiteID}
+		for _, res := range suite.Residents {
+			if strings.TrimSpace(res.FireNotes) == "" {
+				continue
+			}
+			name := strings.TrimSpace(strings.TrimSpace(res.FirstName) + " " + strings.TrimSpace(res.LastName))
+			if name == "" {
+				name = "(name not given)"
+			}
+			unit.Residents = append(unit.Residents, fireResident{Name: name, PhoneCell: res.PhoneCell, PhoneHome: res.PhoneHome, PhoneBusiness: res.PhoneBusiness, FireNotes: res.FireNotes})
+		}
+		if len(unit.Residents) == 0 {
+			continue
+		}
+		unit.EmergencyContacts = suite.EmergencyContacts
+		report = append(report, unit)
+	}
+	sort.Slice(report, func(i, j int) bool { return suiteLess(report[i].SuiteID, report[j].SuiteID) })
+	writeJSON(w, report)
+}
+
+func suiteLess(a, b string) bool {
+	ai, aerr := strconv.Atoi(a)
+	bi, berr := strconv.Atoi(b)
+	if aerr == nil && berr == nil {
+		return ai < bi
+	}
+	return a < b
 }
 
 func (app *App) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +347,8 @@ func (app *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 func (app *App) handleUnits(w http.ResponseWriter, r *http.Request) {
 	rows, err := app.db.QueryContext(r.Context(), `SELECT s.suite_id,
 		COALESCE((SELECT group_concat(trim(first_name || ' ' || last_name), ', ')
-			FROM residents WHERE suite_id=s.suite_id), '')
+			FROM residents WHERE suite_id=s.suite_id), ''),
+		COALESCE((SELECT owner_name FROM owners WHERE suite_id=s.suite_id), '')
 		FROM suites s
 		ORDER BY CAST(s.suite_id AS INTEGER), s.suite_id`)
 	if err != nil {
@@ -246,7 +360,7 @@ func (app *App) handleUnits(w http.ResponseWriter, r *http.Request) {
 	results := []SearchResult{}
 	for rows.Next() {
 		var result SearchResult
-		if err := rows.Scan(&result.SuiteID, &result.Name); err != nil {
+		if err := rows.Scan(&result.SuiteID, &result.Name, &result.OwnerName); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -303,7 +417,7 @@ func (app *App) handleSpreadsheet(w http.ResponseWriter, r *http.Request) {
 
 	header := []string{"Suite Number", "Date Updated", "Door Entercode", "Backup Key Set #", "Owner Lives In Unit", "Owner Name", "Owner Address", "Owner Phone # - Cell", "Owner Phone # - Home", "Owner Phone # - Business"}
 	for i := 1; i <= maxResidents; i++ {
-		header = append(header, fmt.Sprintf("Resident %d - First Name", i), fmt.Sprintf("Resident %d - Last Name", i), fmt.Sprintf("Resident %d - Child?", i), fmt.Sprintf("Resident %d - Age", i), fmt.Sprintf("Resident %d - Phone # - Cell", i), fmt.Sprintf("Resident %d - Phone # - Home", i), fmt.Sprintf("Resident %d - Phone # - Business", i), fmt.Sprintf("Resident %d - Medical Notes", i))
+		header = append(header, fmt.Sprintf("Resident %d - First Name", i), fmt.Sprintf("Resident %d - Last Name", i), fmt.Sprintf("Resident %d - Child?", i), fmt.Sprintf("Resident %d - Age", i), fmt.Sprintf("Resident %d - Phone # - Cell", i), fmt.Sprintf("Resident %d - Phone # - Home", i), fmt.Sprintf("Resident %d - Phone # - Business", i), fmt.Sprintf("Resident %d - Medical Notes", i), fmt.Sprintf("Resident %d - Fire Dept Notes", i))
 	}
 	for i := 1; i <= maxVehicles; i++ {
 		header = append(header, fmt.Sprintf("Vehicle %d - Make & Model", i), fmt.Sprintf("Vehicle %d - Year", i), fmt.Sprintf("Vehicle %d - License Plate", i))
@@ -315,7 +429,7 @@ func (app *App) handleSpreadsheet(w http.ResponseWriter, r *http.Request) {
 		header = append(header, fmt.Sprintf("Locker %d", i))
 	}
 	for i := 1; i <= maxContacts; i++ {
-		header = append(header, fmt.Sprintf("Emergency Contact %d - Name", i), fmt.Sprintf("Emergency Contact %d - Relationship", i), fmt.Sprintf("Emergency Contact %d - Address", i), fmt.Sprintf("Emergency Contact %d - Phone # - Cell", i), fmt.Sprintf("Emergency Contact %d - Phone # - Home", i), fmt.Sprintf("Emergency Contact %d - Phone # - Business", i))
+		header = append(header, fmt.Sprintf("Emergency Contact %d - Name", i), fmt.Sprintf("Emergency Contact %d - Relationship", i), fmt.Sprintf("Emergency Contact %d - Address", i), fmt.Sprintf("Emergency Contact %d - Phone # - Cell", i), fmt.Sprintf("Emergency Contact %d - Phone # - Home", i), fmt.Sprintf("Emergency Contact %d - Phone # - Business", i), fmt.Sprintf("Emergency Contact %d - Notes", i))
 	}
 
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
@@ -333,9 +447,9 @@ func (app *App) handleSpreadsheet(w http.ResponseWriter, r *http.Request) {
 				if value.ChildAge != nil {
 					age = strconv.Itoa(*value.ChildAge)
 				}
-				row = append(row, value.FirstName, value.LastName, strconv.FormatBool(value.IsChild), age, value.PhoneCell, value.PhoneHome, value.PhoneBusiness, value.MedicalNotes)
+				row = append(row, value.FirstName, value.LastName, strconv.FormatBool(value.IsChild), age, value.PhoneCell, value.PhoneHome, value.PhoneBusiness, value.MedicalNotes, value.FireNotes)
 			} else {
-				row = append(row, "", "", "", "", "", "", "", "")
+				row = append(row, "", "", "", "", "", "", "", "", "")
 			}
 		}
 		for i := 0; i < maxVehicles; i++ {
@@ -363,9 +477,9 @@ func (app *App) handleSpreadsheet(w http.ResponseWriter, r *http.Request) {
 		for i := 0; i < maxContacts; i++ {
 			if i < len(suite.EmergencyContacts) {
 				value := suite.EmergencyContacts[i]
-				row = append(row, value.ContactName, value.Relationship, value.Address, value.PhoneCell, value.PhoneHome, value.PhoneBusiness)
+				row = append(row, value.ContactName, value.Relationship, value.Address, value.PhoneCell, value.PhoneHome, value.PhoneBusiness, value.Notes)
 			} else {
-				row = append(row, "", "", "", "", "", "")
+				row = append(row, "", "", "", "", "", "", "")
 			}
 		}
 		if err := csvWriter.Write(row); err != nil {
@@ -420,8 +534,8 @@ func (app *App) handlePDF(w http.ResponseWriter, r *http.Request) {
 	line()
 
 	section("RESIDENTS")
-	residentWidths := []float64{38, 38, 13, 12, 35, 35, 35, 78}
-	residentHeaders := []string{"First Name", "Last Name", "Child", "Age", "Phone # - Cell", "Phone # - Home", "Phone # - Business", "Medical Notes"}
+	residentWidths := []float64{32, 32, 12, 10, 30, 30, 30, 54, 54}
+	residentHeaders := []string{"First Name", "Last Name", "Child", "Age", "Phone # - Cell", "Phone # - Home", "Phone # - Business", "Medical Notes", "Fire Dept Notes"}
 	pdf.SetFont("Arial", "B", 6)
 	for i, header := range residentHeaders {
 		pdf.CellFormat(residentWidths[i], 4, header, "B", 0, "L", false, 0, "")
@@ -436,7 +550,7 @@ func (app *App) handlePDF(w http.ResponseWriter, r *http.Request) {
 		if value.ChildAge != nil {
 			age = strconv.Itoa(*value.ChildAge)
 		}
-		values := []string{value.FirstName, value.LastName, strconv.FormatBool(value.IsChild), age, value.PhoneCell, value.PhoneHome, value.PhoneBusiness, value.MedicalNotes}
+		values := []string{value.FirstName, value.LastName, strconv.FormatBool(value.IsChild), age, value.PhoneCell, value.PhoneHome, value.PhoneBusiness, value.MedicalNotes, value.FireNotes}
 		pdf.SetFont("Arial", "", 6)
 		for i, text := range values {
 			pdf.CellFormat(residentWidths[i], 4, text, "B", 0, "L", false, 0, "")
@@ -456,8 +570,8 @@ func (app *App) handlePDF(w http.ResponseWriter, r *http.Request) {
 	line()
 
 	section("EMERGENCY CONTACTS")
-	contactWidths := []float64{42, 35, 75, 42, 42, 48}
-	contactHeaders := []string{"Name", "Relationship", "Address", "Phone # - Cell", "Phone # - Home", "Phone # - Business"}
+	contactWidths := []float64{38, 30, 58, 34, 34, 34, 56}
+	contactHeaders := []string{"Name", "Relationship", "Address", "Phone # - Cell", "Phone # - Home", "Phone # - Business", "Notes"}
 	pdf.SetFont("Arial", "B", 6)
 	for i, header := range contactHeaders {
 		pdf.CellFormat(contactWidths[i], 4, header, "B", 0, "L", false, 0, "")
@@ -468,7 +582,7 @@ func (app *App) handlePDF(w http.ResponseWriter, r *http.Request) {
 		pdf.CellFormat(284, 4, "None listed", "B", 1, "L", false, 0, "")
 	}
 	for _, value := range suite.EmergencyContacts {
-		values := []string{value.ContactName, value.Relationship, value.Address, value.PhoneCell, value.PhoneHome, value.PhoneBusiness}
+		values := []string{value.ContactName, value.Relationship, value.Address, value.PhoneCell, value.PhoneHome, value.PhoneBusiness, value.Notes}
 		pdf.SetFont("Arial", "", 6)
 		for i, text := range values {
 			pdf.CellFormat(contactWidths[i], 4, text, "B", 0, "L", false, 0, "")
@@ -500,7 +614,7 @@ func (app *App) handleSuite(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, suite)
 		return
 	}
-	if err := app.tpl.Execute(w, suite); err != nil {
+	if err := app.editTpl.Execute(w, suite); err != nil {
 		http.Error(w, err.Error(), 500)
 	}
 }
@@ -520,6 +634,14 @@ func (app *App) handleSave(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "suite number must be 3-4 letters or numbers", 400)
 		return
 	}
+	if !suite.OwnerIsResident && strings.TrimSpace(suite.Owner.OwnerName) == "" {
+		http.Error(w, "Owner name is required when the owner does not live in the unit", 400)
+		return
+	}
+	if !suite.OwnerIsResident && strings.TrimSpace(suite.Owner.PhoneCell) == "" && strings.TrimSpace(suite.Owner.PhoneHome) == "" && strings.TrimSpace(suite.Owner.PhoneBusiness) == "" {
+		http.Error(w, "At least one owner phone number is required when the owner does not live in the unit", 400)
+		return
+	}
 	if err := app.saveSuite(r.Context(), suite); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -533,185 +655,11 @@ func (app *App) handleSave(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) loadSuite(ctx context.Context, id string) (Suite, error) {
-	var suite Suite
-	err := app.db.QueryRowContext(ctx, `SELECT suite_id, COALESCE(date_updated,''), COALESCE(entercode,''), COALESCE(backup_keyset_num,''), owner_is_resident FROM suites WHERE suite_id=?`, id).Scan(&suite.SuiteID, &suite.DateUpdated, &suite.EnterCode, &suite.BackupKeysetNum, &suite.OwnerIsResident)
-	if err != nil {
-		return suite, err
-	}
-	suite.Residents = []Resident{}
-	suite.EmergencyContacts = []EmergencyContact{}
-	suite.Vehicles = []Vehicle{}
-	suite.ParkingSpots = []string{}
-	suite.Lockers = []string{}
-	rows, err := app.db.QueryContext(ctx, `SELECT first_name,last_name,is_child,child_age,phone_cell,phone_home,phone_business,medical_notes FROM residents WHERE suite_id=? ORDER BY id`, id)
-	if err != nil {
-		return suite, err
-	}
-	for rows.Next() {
-		var value Resident
-		if err := rows.Scan(&value.FirstName, &value.LastName, &value.IsChild, &value.ChildAge, &value.PhoneCell, &value.PhoneHome, &value.PhoneBusiness, &value.MedicalNotes); err != nil {
-			rows.Close()
-			return suite, err
-		}
-		suite.Residents = append(suite.Residents, value)
-	}
-	rows.Close()
-	rows, err = app.db.QueryContext(ctx, `SELECT contact_name,relationship,address,phone_cell,phone_home,phone_business FROM emergency_contacts WHERE suite_id=? ORDER BY id`, id)
-	if err != nil {
-		return suite, err
-	}
-	for rows.Next() {
-		var value EmergencyContact
-		if err := rows.Scan(&value.ContactName, &value.Relationship, &value.Address, &value.PhoneCell, &value.PhoneHome, &value.PhoneBusiness); err != nil {
-			rows.Close()
-			return suite, err
-		}
-		suite.EmergencyContacts = append(suite.EmergencyContacts, value)
-	}
-	rows.Close()
-	rows, err = app.db.QueryContext(ctx, `SELECT make_model,year,plate_number FROM vehicles WHERE suite_id=? ORDER BY id`, id)
-	if err != nil {
-		return suite, err
-	}
-	for rows.Next() {
-		var value Vehicle
-		if err := rows.Scan(&value.MakeModel, &value.Year, &value.PlateNumber); err != nil {
-			rows.Close()
-			return suite, err
-		}
-		suite.Vehicles = append(suite.Vehicles, value)
-	}
-	rows.Close()
-	rows, err = app.db.QueryContext(ctx, `SELECT spot_number FROM parking_spots WHERE suite_id=? ORDER BY id`, id)
-	if err != nil {
-		return suite, err
-	}
-	for rows.Next() {
-		var value string
-		rows.Scan(&value)
-		suite.ParkingSpots = append(suite.ParkingSpots, value)
-	}
-	rows.Close()
-	rows, err = app.db.QueryContext(ctx, `SELECT locker_number FROM lockers WHERE suite_id=? ORDER BY id`, id)
-	if err != nil {
-		return suite, err
-	}
-	for rows.Next() {
-		var value string
-		rows.Scan(&value)
-		suite.Lockers = append(suite.Lockers, value)
-	}
-	rows.Close()
-	app.db.QueryRowContext(ctx, `SELECT owner_name,address,phone_cell,phone_home,phone_business FROM owners WHERE suite_id=?`, id).Scan(&suite.Owner.OwnerName, &suite.Owner.Address, &suite.Owner.PhoneCell, &suite.Owner.PhoneHome, &suite.Owner.PhoneBusiness)
-	return suite, nil
+	return store.LoadSuite(ctx, app.db, id)
 }
 
 func (app *App) saveSuite(ctx context.Context, suite Suite) error {
-	tx, err := app.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `INSERT INTO suites(suite_id,date_updated,entercode,backup_keyset_num,owner_is_resident) VALUES(?,?,?,?,?) ON CONFLICT(suite_id) DO UPDATE SET date_updated=excluded.date_updated,entercode=excluded.entercode,backup_keyset_num=excluded.backup_keyset_num,owner_is_resident=excluded.owner_is_resident`, suite.SuiteID, time.Now().Format(time.RFC3339), strings.TrimSpace(suite.EnterCode), strings.TrimSpace(suite.BackupKeysetNum), suite.OwnerIsResident)
-	if err != nil {
-		return err
-	}
-	for _, table := range []string{"residents", "emergency_contacts", "vehicles", "parking_spots", "lockers", "owners"} {
-		if _, err = tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE suite_id=?", suite.SuiteID); err != nil {
-			return err
-		}
-	}
-	for _, value := range suite.Residents {
-		_, err = tx.ExecContext(ctx, `INSERT INTO residents(suite_id,first_name,last_name,is_child,child_age,phone_cell,phone_home,phone_business,medical_notes) VALUES(?,?,?,?,?,?,?,?,?)`, suite.SuiteID, value.FirstName, value.LastName, value.IsChild, value.ChildAge, value.PhoneCell, value.PhoneHome, value.PhoneBusiness, value.MedicalNotes)
-		if err != nil {
-			return err
-		}
-	}
-	for _, value := range suite.EmergencyContacts {
-		_, err = tx.ExecContext(ctx, `INSERT INTO emergency_contacts(suite_id,contact_name,relationship,address,phone_cell,phone_home,phone_business) VALUES(?,?,?,?,?,?,?)`, suite.SuiteID, value.ContactName, value.Relationship, value.Address, value.PhoneCell, value.PhoneHome, value.PhoneBusiness)
-		if err != nil {
-			return err
-		}
-	}
-	for _, value := range suite.Vehicles {
-		_, err = tx.ExecContext(ctx, `INSERT INTO vehicles(suite_id,make_model,year,plate_number) VALUES(?,?,?,?)`, suite.SuiteID, value.MakeModel, value.Year, value.PlateNumber)
-		if err != nil {
-			return err
-		}
-	}
-	for _, value := range suite.ParkingSpots {
-		if strings.TrimSpace(value) != "" {
-			_, err = tx.ExecContext(ctx, `INSERT INTO parking_spots(suite_id,spot_number) VALUES(?,?)`, suite.SuiteID, value)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	for _, value := range suite.Lockers {
-		if strings.TrimSpace(value) != "" {
-			_, err = tx.ExecContext(ctx, `INSERT INTO lockers(suite_id,locker_number) VALUES(?,?)`, suite.SuiteID, value)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	if !suite.OwnerIsResident {
-		_, err = tx.ExecContext(ctx, `INSERT INTO owners(suite_id,owner_name,address,phone_cell,phone_home,phone_business) VALUES(?,?,?,?,?,?)`, suite.SuiteID, suite.Owner.OwnerName, suite.Owner.Address, suite.Owner.PhoneCell, suite.Owner.PhoneHome, suite.Owner.PhoneBusiness)
-		if err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
-func seedDatabase(app *App) error {
-	firstNames := []string{"Alex", "Blair", "Casey", "Drew", "Elliot", "Frankie", "Gray", "Harper", "Indigo", "Jordan", "Kai", "Logan"}
-	lastNames := []string{"Bennett", "Carter", "Diaz", "Ellis", "Foster", "Grant", "Hayes", "Irwin", "Jensen", "Kim", "Lane", "Morgan"}
-
-	for floor := 1; floor <= 11; floor++ {
-		for apartment := 1; apartment <= 12; apartment++ {
-			suiteID := strconv.Itoa(floor*100 + apartment)
-			index := (floor-1)*12 + apartment - 1
-			ownerIsResident := index%4 != 0
-			suite := Suite{
-				SuiteID:         suiteID,
-				DateUpdated:     time.Date(2026, time.January, 15, 12, 0, 0, 0, time.UTC).Format(time.RFC3339),
-				EnterCode:       fmt.Sprintf("%04d", 1000+index),
-				BackupKeysetNum: fmt.Sprintf("K-%03d", index+1),
-				OwnerIsResident: ownerIsResident,
-				Residents: []Resident{{
-					FirstName:    firstNames[index%len(firstNames)],
-					LastName:     lastNames[(index/len(firstNames))%len(lastNames)],
-					PhoneCell:    fmt.Sprintf("555-010-%04d", index+1),
-					MedicalNotes: "Dummy data - do not contact",
-				}},
-				EmergencyContacts: []EmergencyContact{{
-					ContactName:  fmt.Sprintf("Emergency Contact %d", index+1),
-					Relationship: "Friend",
-					Address:      "100 Example Street",
-					PhoneCell:    fmt.Sprintf("555-020-%04d", index+1),
-				}},
-				Vehicles: []Vehicle{{
-					MakeModel:   "Example Sedan",
-					Year:        "2024",
-					PlateNumber: fmt.Sprintf("DUMMY%03d", index+1),
-				}},
-				ParkingSpots: []string{fmt.Sprintf("P-%03d", index+1)},
-				Lockers:      []string{fmt.Sprintf("L-%03d", index+1)},
-			}
-			if !ownerIsResident {
-				suite.Owner = Owner{
-					OwnerName: fmt.Sprintf("Owner %d", index+1),
-					Address:   "100 Example Street",
-					PhoneCell: fmt.Sprintf("555-030-%04d", index+1),
-				}
-			}
-			if err := app.saveSuite(context.Background(), suite); err != nil {
-				return fmt.Errorf("seed apartment %s: %w", suiteID, err)
-			}
-		}
-	}
-	return nil
+	return store.SaveSuite(ctx, app.db, suite)
 }
 
 func writeJSON(w http.ResponseWriter, value any) {

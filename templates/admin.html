@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canyon Springs — Administration</title>
+<style>
+:root{--ink:#173042;--muted:#61727d;--panel:#fffdf8;--line:#d7d8d1;--teal:#1f7271;--shadow:0 14px 35px #17304212}
+*{box-sizing:border-box}body{margin:0;color:var(--ink);background:linear-gradient(135deg,#f1eee6,#eaf1ee);font:15px/1.45 "Segoe UI",Tahoma,sans-serif;min-height:100vh;padding:24px}
+main{max-width:720px;margin:auto}
+.masthead{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;border-bottom:2px solid var(--ink);padding-bottom:12px}
+h1{margin:0;font-weight:500;font-size:28px}
+h2{font-size:18px;font-weight:500;margin:24px 0 10px}
+.card{background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);padding:20px;margin-bottom:20px}
+.row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.name{font-weight:600}
+.badges{display:flex;gap:6px;align-items:center}
+.badge{font:700 10px system-ui,sans-serif;padding:2px 8px;border-radius:3px;text-transform:uppercase;letter-spacing:.05em}
+.badge.admin{background:var(--teal);color:#fff}
+.badge.you{background:var(--gold);color:#fff}
+.actions{display:flex;gap:6px;align-items:center}
+input[type=text],input[type=password]{width:100%;border:1px solid var(--line);background:#fff;padding:9px 11px;border-radius:3px;color:var(--ink);font:14px "Segoe UI",sans-serif;margin-bottom:8px}
+label{display:block;font:700 11px system-ui,sans-serif;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:8px 0 4px}
+.btn{border:1px solid var(--teal);background:var(--teal);color:#fff;padding:8px 14px;border-radius:3px;font:700 12px system-ui,sans-serif;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--teal)}
+.btn.danger{border-color:#c0392b;background:#c0392b}
+.btn.sm{padding:4px 10px;font-size:11px}
+.themetoggle{border:1px solid var(--line);background:var(--panel);color:var(--muted);padding:6px 12px;border-radius:3px;font:700 11px system-ui,sans-serif;cursor:pointer}
+.checkbox{width:auto;margin:0 6px 0 0;vertical-align:middle}
+.empty{color:var(--muted);font-style:italic;padding:14px 0}
+:root[data-theme="dark"]{--ink:#e6edf3;--muted:#8b9eb0;--panel:#1b242c;--line:#2d3843;--teal:#3dbdb6;--shadow:0 14px 35px #00000050}
+:root[data-theme="dark"] body{background:linear-gradient(135deg,#12161b,#0f1418)}
+:root[data-theme="dark"] input{background:#12181d;color:var(--ink)}
+</style>
+<script>
+(function(){try{if(localStorage.getItem('cs_theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}}());
+function toggleTheme(){var h=document.documentElement,d=h.getAttribute('data-theme')==='dark'?'':'dark';h.setAttribute('data-theme',d);try{localStorage.setItem('cs_theme',d);}catch(e){}}
+</script>
+</head>
+<body>
+<main>
+<div class="masthead">
+<h1>Administration</h1>
+<div style="display:flex;gap:8px">
+<a class="btn ghost" href="/units">Units</a>
+<a class="btn ghost" href="/report/fire">Fire Report</a>
+<form method="POST" action="/logout" style="display:inline"><button class="btn ghost">Sign out</button></form>
+<button class="themetoggle" onclick="toggleTheme()">Theme</button>
+</div>
+</div>
+
+<div class="card">
+<h2>Users</h2>
+{{if .users}}{{range .users}}
+<div class="row">
+<span class="name">{{.Username}}</span>
+<span class="badges">
+{{if .IsAdmin}}<span class="badge admin">Admin</span>{{end}}
+{{if eq .Username $.currentUser}}<span class="badge you">You</span>{{end}}
+</span>
+<span class="actions">
+{{if ne .Username $.currentUser}}<form method="POST" action="/admin/users/{{.Username}}/toggle-admin" style="display:inline"><button class="btn sm ghost">{{if .IsAdmin}}Remove admin{{else}}Make admin{{end}}</button></form>{{end}}
+<form method="POST" action="/admin/users/{{.Username}}/password" style="display:inline" onsubmit="var p=prompt('New password for {{.Username}}:');if(!p)return false;this.password.value=p;return true"><input type="hidden" name="password"><button class="btn sm ghost">Password</button></form>
+{{if ne .Username $.currentUser}}<form method="POST" action="/admin/users/{{.Username}}/delete" style="display:inline" onsubmit="return confirm('Delete user {{.Username}}?')"><button class="btn sm danger">Delete</button></form>{{end}}
+</span>
+</div>
+{{end}}{{else}}
+<p class="empty">No users yet.</p>
+{{end}}
+</div>
+
+<div class="card">
+<h2>Create user</h2>
+<form method="POST" action="/admin/users">
+<label for="newuser">Username</label>
+<input id="newuser" name="username" type="text" required>
+<label for="newpass">Password</label>
+<input id="newpass" name="password" type="password" required>
+<label><input type="checkbox" name="is_admin" value="1" class="checkbox">Admin</label>
+<button class="btn" type="submit">Create</button>
+</form>
+</div>
+</main>
+</body>
+</html>

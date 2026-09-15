@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canyon Springs Residents — Fire Dept Report</title>
+<style>
+:root{--ink:#173042;--muted:#61727d;--panel:#fffdf8;--line:#d7d8d1;--teal:#1f7271;--shadow:0 14px 35px #17304212}
+*{box-sizing:border-box}body{margin:0;color:var(--ink);background:#fff;font:12px/1.35 "Segoe UI",Tahoma,sans-serif}
+main{max-width:1100px;margin:auto;padding:12px 16px 30px}
+.masthead{display:flex;justify-content:space-between;align-items:end;gap:20px;border-bottom:2px solid var(--ink);padding:8px 0 10px}
+.eyebrow{font:700 10px/1.2 system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--teal)}
+h1{margin:0;font-weight:700;font-size:22px}
+.meta{font:12px system-ui,sans-serif;color:var(--muted);text-align:right}
+.meta a{color:var(--teal);font-weight:700;text-decoration:none;font-size:13px}
+.tools{display:flex;justify-content:space-between;align-items:center;margin:10px 0;font:12px system-ui,sans-serif;color:var(--muted)}
+table{width:100%;border-collapse:collapse}
+th{background:#eef1f0;text-align:left;font:700 10px system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:5px 6px;border-bottom:2px solid var(--ink)}
+td{padding:4px 6px;vertical-align:top;border-bottom:1px solid var(--line)}
+tr.newunit td{border-top:2px solid var(--ink)}
+td.unit{font-weight:700;white-space:nowrap}
+td.note{min-width:220px}
+.empty{padding:22px;text-align:center;color:var(--muted)}
+.btn{border:1px solid var(--teal);background:var(--teal);color:#fff;padding:6px 12px;border-radius:3px;font:700 12px system-ui,sans-serif;cursor:pointer}
+@media print{@page{size:letter;margin:10mm}.masthead .meta,.tools{display:none}main{max-width:none;padding:0}td,th{font-size:10.5px}tr{break-inside:avoid}}
+.theme-btn{border:1px solid var(--teal);background:transparent;color:var(--teal);padding:2px 10px;border-radius:3px;font:700 12px system-ui,sans-serif;cursor:pointer;text-transform:uppercase}
+:root[data-theme="dark"]{--ink:#e6edf3;--muted:#8b9eb0;--panel:#1b242c;--line:#2d3843;--teal:#3dbdb6;--shadow:0 14px 35px #00000050}
+:root[data-theme="dark"] body{background:#0d1117}
+:root[data-theme="dark"] th{background:#1b242c}
+</style>
+<script>
+(function(){try{if(localStorage.getItem('cs_theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}}());
+function toggleTheme(){var h=document.documentElement,d=h.getAttribute('data-theme')==='dark'?'':'dark';h.setAttribute('data-theme',d);try{localStorage.setItem('cs_theme',d);}catch(e){}}
+</script>
+</head>
+<body><main>
+<header class="masthead"><div><div class="eyebrow">Canyon Springs · Resident records</div><h1>Fire Dept Report</h1></div><div class="meta"><button class="theme-btn" onclick="toggleTheme()">Dark</button><br><a href="/units">&larr; All Units</a> · <a href="/admin">Admin</a> · <form method="POST" action="/logout" style="display:inline"><button style="background:none;border:0;padding:0;color:var(--teal);font-weight:700;cursor:pointer;font-size:13px">Sign out</button></form><br><span id="today"></span></div></header>
+<div class="tools"><span id="count">Loading…</span><button class="btn" onclick="window.print()">Print report</button></div>
+<div id="report"><div class="empty">Loading report…</div></div>
+</main>
+<script>
+const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+
+document.getElementById('today').textContent=new Intl.DateTimeFormat('en',{dateStyle:'long'}).format(new Date());
+function phones(r){return [r.phone_cell,r.phone_home,r.phone_business].filter(Boolean).join(' / ')||'—';}
+function cphones(c){return [c.phone_cell,c.phone_home,c.phone_business].filter(Boolean).join(' / ')||'—';}
+async function load(){try{
+let r=await fetch('/report/fire.json');let data=await r.json();
+document.getElementById('count').textContent=data.length+' unit(s) with fire dept notes';
+if(!data.length){document.getElementById('report').innerHTML='<div class="empty">No residents have fire dept notes.</div>';return;}
+let rows='';
+data.forEach((u,ui)=>{
+let ec=(u.emergency_contacts||[]).map(c=>esc(c.contact_name)+(c.relationship?' ('+esc(c.relationship)+')':'')+': '+esc(cphones(c))).join('<br>');
+u.residents.forEach((x,ri)=>{
+rows+='<tr class="'+(ri===0?'newunit':'')+'"><td class="unit">'+(ri===0?esc(u.suite_id):'')+'</td><td><strong>'+esc(x.name)+'</strong><br>'+esc(phones(x))+'</td><td class="note">'+esc(x.fire_notes)+'</td><td>'+(ri===0?ec:'')+'</td></tr>';});});
+document.getElementById('report').innerHTML='<table><thead><tr><th>Unit</th><th>Resident / Phone</th><th>Fire dept notes</th><th>Emergency contact(s)</th></tr></thead><tbody>'+rows+'</tbody></table>';
+}catch(e){document.getElementById('report').innerHTML='<div class="empty">Unable to load report.</div>';}}
+load();
+</script></body></html>

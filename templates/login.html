@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canyon Springs Residents — Sign in</title>
+<style>
+:root{--ink:#173042;--muted:#61727d;--panel:#fffdf8;--line:#d7d8d1;--teal:#1f7271;--shadow:0 14px 35px #17304212}
+*{box-sizing:border-box}body{margin:0;color:var(--ink);background:linear-gradient(135deg,#f1eee6,#eaf1ee);font:15px/1.45 "Segoe UI",Tahoma,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{width:min(420px,100%);background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);padding:32px 30px}
+.eyebrow{font:700 11px/1.2 system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--teal)}
+h1{margin:6px 0 4px;font-family:"Segoe UI",Tahoma,sans-serif;font-weight:500;font-size:34px}
+p.sub{margin:0 0 20px;color:var(--muted);font-size:13px}
+label{display:block;font:700 11px system-ui,sans-serif;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:12px 0 4px}
+input{width:100%;border:1px solid var(--line);background:#fff;padding:10px 12px;border-radius:3px;color:var(--ink);font:15px "Segoe UI",sans-serif}
+.btn{width:100%;margin-top:20px;border:1px solid var(--teal);background:var(--teal);color:#fff;padding:11px;border-radius:3px;font:700 14px system-ui,sans-serif;cursor:pointer}
+.btn:hover{filter:brightness(1.07)}
+.note{margin-top:14px;font-size:12px;color:var(--muted);text-align:center}
+.err{display:none;margin-top:12px;background:#fdeceb;border:1px solid #e17962;color:#8c2f22;padding:8px 10px;font-size:13px;border-radius:3px}
+.themetoggle{margin:18px 0 0;width:100%;border:1px solid var(--line);background:var(--panel);color:var(--muted);padding:9px;border-radius:3px;font:700 12px system-ui,sans-serif;cursor:pointer}
+:root[data-theme="dark"]{--ink:#e6edf3;--muted:#8b9eb0;--panel:#1b242c;--line:#2d3843;--teal:#3dbdb6;--shadow:0 14px 35px #00000050}
+:root[data-theme="dark"] body{background:linear-gradient(135deg,#12161b,#0f1418)}
+:root[data-theme="dark"] input{background:#12181d}
+:root[data-theme="dark"] .err{background:#3a2330;border:1px solid #b3504a;color:#ffb4a6}
+</style>
+<script>
+(function(){try{if(localStorage.getItem('cs_theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}}());
+function toggleTheme(){var h=document.documentElement,d=h.getAttribute('data-theme')==='dark'?'':'dark';h.setAttribute('data-theme',d);try{localStorage.setItem('cs_theme',d);}catch(e){}}
+</script>
+</head>
+<body>
+<form class="card" method="POST" action="/login">
+<div class="eyebrow">Canyon Springs · Resident records</div>
+<h1>Welcome home.</h1>
+<p class="sub">PRIVATE COMMUNITY DIRECTORY — please sign in.</p>
+{{if .error}}<div id="err" class="err" style="display:block">{{.error}}</div>{{end}}
+<label for="user">Username</label>
+<input id="user" name="username" autocomplete="username" placeholder="e.g. manager">
+<label for="pass">Password</label>
+<input id="pass" name="password" type="password" autocomplete="current-password" placeholder="••••••••">
+<button class="btn" type="submit">Sign in</button>
+<button type="button" class="themetoggle" onclick="toggleTheme()">Toggle dark mode</button>
+</form>
+</body>
+</html>

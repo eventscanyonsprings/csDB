@@ -1,2 +1,11 @@
 server.exe
 canyon-springs.db
+dummy*.db
+verify*.db
+*.bak
+seed.exe
+*.log
+srv.err
+test_*.db
+login-smoke.db
+hash-smoke.db

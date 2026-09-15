@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canyon Springs Residents — All Units</title>
+<style>
+:root{--ink:#173042;--muted:#61727d;--panel:#fffdf8;--line:#d7d8d1;--teal:#1f7271;--shadow:0 14px 35px #17304212}
+*{box-sizing:border-box}body{margin:0;color:var(--ink);background:radial-gradient(circle at 10% 0%,#fff8df 0 18%,transparent 38%),linear-gradient(135deg,#f1eee6,#eaf1ee);font:15px/1.45 "Segoe UI",Tahoma,sans-serif}
+main{max-width:900px;margin:auto;padding:28px 20px 70px}
+.masthead{display:flex;justify-content:space-between;align-items:end;gap:20px;border-bottom:2px solid var(--ink);padding:12px 0 20px}
+.eyebrow{font:700 11px/1.2 system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--teal)}
+h1{margin:0;font-weight:500;font-size:clamp(30px,4vw,46px);line-height:1}
+.meta{font:14px system-ui,sans-serif;color:var(--muted);text-align:right}
+.meta a{color:var(--teal);font-weight:700;text-decoration:none;font-size:15px}
+.search{margin:24px 0 12px}.search input{width:100%;padding:14px 16px;border:1px solid var(--line);border-radius:3px;background:#fffdfac9;font:17px "Segoe UI",Tahoma,sans-serif;box-shadow:var(--shadow)}
+.count{font:12px system-ui,sans-serif;color:var(--muted);margin:0 0 8px}
+.list{background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow)}
+.row{display:flex;justify-content:space-between;align-items:center;width:100%;gap:12px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--ink);padding:13px 16px;text-align:left;cursor:pointer;font:15px "Segoe UI",Tahoma,sans-serif}
+.row:last-child{border-bottom:0}.row:hover{background:#edf5f1}
+.row strong{font-size:17px}.row small{color:var(--ink);font-size:17px;font-weight:600}
+.newbar{display:flex;gap:8px;margin-top:16px}.newbar input{flex:1;border:1px solid var(--line);padding:10px 12px;border-radius:3px;font:14px "Segoe UI",sans-serif}
+.btn{border:1px solid var(--teal);background:var(--teal);color:#fff;padding:10px 16px;border-radius:3px;font:700 13px system-ui,sans-serif;cursor:pointer;white-space:nowrap}
+.btn.ghost{background:transparent;color:var(--teal)}
+.empty{padding:22px;text-align:center;color:var(--muted)}
+.theme-btn{border:1px solid var(--teal);background:transparent;color:var(--teal);padding:2px 10px;border-radius:3px;font:700 12px system-ui,sans-serif;cursor:pointer;text-transform:uppercase}
+:root[data-theme="dark"]{--ink:#e6edf3;--muted:#8b9eb0;--panel:#1b242c;--line:#2d3843;--teal:#3dbdb6;--shadow:0 14px 35px #00000050}
+:root[data-theme="dark"] body{background:radial-gradient(circle at 10% 0%,#1b242c 0 18%,transparent 38%),linear-gradient(135deg,#12161b,#0f1418)}
+:root[data-theme="dark"] .search input{background:#12181d}
+:root[data-theme="dark"] .row:hover{background:#25313d}
+</style>
+<script>
+(function(){try{if(localStorage.getItem('cs_theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}}());
+function toggleTheme(){var h=document.documentElement,d=h.getAttribute('data-theme')==='dark'?'':'dark';h.setAttribute('data-theme',d);try{localStorage.setItem('cs_theme',d);}catch(e){}}
+</script>
+</head>
+<body><main>
+<header class="masthead"><div><div class="eyebrow">Canyon Springs · Resident records</div><h1>All Units</h1></div><div class="meta"><button class="theme-btn" onclick="toggleTheme()">Dark</button><br><a href="/export/spreadsheet">Export spreadsheet</a> · <a href="/report/fire">Fire Dept Rpt</a> · <a href="/admin">Admin</a> · <form method="POST" action="/logout" style="display:inline"><button style="background:none;border:0;padding:0;color:var(--teal);font-weight:700;cursor:pointer;font-size:15px">Sign out</button></form></div></header>
+<div class="search"><input id="q" autocomplete="off" placeholder="Filter by unit number or resident name…"></div>
+<p class="count" id="count"></p>
+<div class="list" id="list"><div class="empty">Loading units…</div></div>
+<div class="newbar"><input id="newid" maxlength="4" placeholder="New unit number (e.g. 602)"><button class="btn" onclick="newUnit()">New unit</button></div>
+</main>
+<script>
+const $=s=>document.querySelector(s), esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+let all=[];
+async function load(){try{let r=await fetch('/api/units');all=await r.json();render();}catch(e){document.getElementById('list').innerHTML='<div class="empty">Unable to load units.</div>';}}
+function render(){let q=document.getElementById('q').value.trim().toLowerCase();
+let f=all.filter(x=>!q||x.suite_id.toLowerCase().includes(q)||(x.name||'').toLowerCase().includes(q)||(x.owner_name||'').toLowerCase().includes(q));
+document.getElementById('count').textContent=f.length+' of '+all.length+' units';
+document.getElementById('list').innerHTML=f.map(x=>{let owner=(x.owner_name||'').trim();let name=(x.name||'').trim();let label=owner?('owner: '+esc(owner)+(name?' | '+esc(name):'')):(esc(name)||'No residents saved');return '<button class="row" onclick="openUnit(\''+esc(x.suite_id)+'\')"><strong>Unit '+esc(x.suite_id)+'</strong><small>'+label+'</small></button>';}).join('')||'<div class="empty">No units match.</div>';}
+function openUnit(id){window.location.href='/edit?id='+encodeURIComponent(id);}
+function newUnit(){let v=document.getElementById('newid').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4);if(!/^[A-Z0-9]{3,4}$/.test(v)){alert('Enter a 3–4 character unit number.');return;}openUnit(v);}
+document.getElementById('q').addEventListener('input',render);
+load();
+</script></body></html>
