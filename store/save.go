@@ -56,7 +56,22 @@ func SaveSuite(ctx context.Context, db *sql.DB, suite Suite) error {
 			}
 		}
 	}
-	if !suite.OwnerIsResident {
+	// Always persist the owner row when any owner field was entered,
+	// even when the owner lives in the unit. Previously the row was
+	// silently discarded when OwnerIsResident was true, so the PDF
+	// (which loads from the DB) came back blank.
+	if strings.TrimSpace(suite.Owner.OwnerName) != "" ||
+		strings.TrimSpace(suite.Owner.Address) != "" ||
+		strings.TrimSpace(suite.Owner.PhoneCell) != "" ||
+		strings.TrimSpace(suite.Owner.PhoneHome) != "" ||
+		strings.TrimSpace(suite.Owner.PhoneBusiness) != "" {
+		_, err = tx.ExecContext(ctx, `INSERT INTO owners(suite_id,owner_name,address,phone_cell,phone_home,phone_business) VALUES(?,?,?,?,?,?)`, suite.SuiteID, suite.Owner.OwnerName, suite.Owner.Address, suite.Owner.PhoneCell, suite.Owner.PhoneHome, suite.Owner.PhoneBusiness)
+		if err != nil {
+			return err
+		}
+	} else if !suite.OwnerIsResident {
+		// Keep a row (possibly empty) for non-resident owners so the
+		// distinction survives a load/save round-trip.
 		_, err = tx.ExecContext(ctx, `INSERT INTO owners(suite_id,owner_name,address,phone_cell,phone_home,phone_business) VALUES(?,?,?,?,?,?)`, suite.SuiteID, suite.Owner.OwnerName, suite.Owner.Address, suite.Owner.PhoneCell, suite.Owner.PhoneHome, suite.Owner.PhoneBusiness)
 		if err != nil {
 			return err

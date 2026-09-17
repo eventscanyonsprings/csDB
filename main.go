@@ -48,6 +48,9 @@ type SearchResult struct {
 	SuiteID   string `json:"suite_id"`
 	Name      string `json:"name"`
 	OwnerName string `json:"owner_name"`
+	Plates    string `json:"plates"`
+	Spots     string `json:"spots"`
+	Lockers   string `json:"lockers"`
 }
 
 func main() {
@@ -348,7 +351,10 @@ func (app *App) handleUnits(w http.ResponseWriter, r *http.Request) {
 	rows, err := app.db.QueryContext(r.Context(), `SELECT s.suite_id,
 		COALESCE((SELECT group_concat(trim(first_name || ' ' || last_name), ', ')
 			FROM residents WHERE suite_id=s.suite_id), ''),
-		COALESCE((SELECT owner_name FROM owners WHERE suite_id=s.suite_id), '')
+		COALESCE((SELECT owner_name FROM owners WHERE suite_id=s.suite_id), ''),
+		COALESCE((SELECT group_concat(plate_number, ', ') FROM vehicles WHERE suite_id=s.suite_id AND COALESCE(plate_number,'')<>''), ''),
+		COALESCE((SELECT group_concat(spot_number, ', ') FROM parking_spots WHERE suite_id=s.suite_id AND COALESCE(spot_number,'')<>''), ''),
+		COALESCE((SELECT group_concat(locker_number, ', ') FROM lockers WHERE suite_id=s.suite_id AND COALESCE(locker_number,'')<>''), '')
 		FROM suites s
 		ORDER BY CAST(s.suite_id AS INTEGER), s.suite_id`)
 	if err != nil {
@@ -360,7 +366,7 @@ func (app *App) handleUnits(w http.ResponseWriter, r *http.Request) {
 	results := []SearchResult{}
 	for rows.Next() {
 		var result SearchResult
-		if err := rows.Scan(&result.SuiteID, &result.Name, &result.OwnerName); err != nil {
+		if err := rows.Scan(&result.SuiteID, &result.Name, &result.OwnerName, &result.Plates, &result.Spots, &result.Lockers); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -514,27 +520,81 @@ func (app *App) handlePDF(w http.ResponseWriter, r *http.Request) {
 		pdf.SetTextColor(0, 0, 0)
 	}
 	field := func(label, value string, width float64) {
+		// width is the TOTAL width for this field (label + value).
+		// Size the label to its text so short labels (e.g. "Owner:")
+		// don't steal space from long values like the address.
 		pdf.SetFont("Arial", "B", 7)
-		pdf.CellFormat(width, 4.5, label+":", "B", 0, "L", false, 0, "")
+		need := pdf.GetStringWidth(label+":  ") + 2
+		labelW := need
+		if labelW > width*0.5 {
+			labelW = width * 0.5
+		}
+		if labelW < 14 {
+			labelW = 14
+		}
+		valueW := width - labelW
+		pdf.CellFormat(labelW, 4.5, label+":", "B", 0, "L", false, 0, "")
 		pdf.SetFont("Arial", "", 7)
-		pdf.CellFormat(width, 4.5, value, "B", 0, "L", false, 0, "")
+		pdf.CellFormat(valueW, 4.5, value, "B", 0, "L", false, 0, "")
 	}
+	// Landscape Letter usable width = 279.4 - 8 - 8 = ~263.4mm.
+	// Keep every row at or under that so nothing runs off the page.
+	const pageW = 263.0
 	line := func() { pdf.Ln(5) }
+	yesNo := func(b bool) string {
+		if b {
+			return "Yes"
+		}
+		return "No"
+	}
 
 	section("SUITE DETAILS")
 	field("Door Entercode", suite.EnterCode, 58)
 	field("Backup Key Set #", suite.BackupKeysetNum, 58)
-	field("Owner Lives In Unit", strconv.FormatBool(suite.OwnerIsResident), 55)
-	field("Owner", suite.Owner.OwnerName, 70)
-	field("Owner Address", suite.Owner.Address, 125)
+	field("Owner Lives In Unit", yesNo(suite.OwnerIsResident), 55)
 	line()
-	field("Owner Phone # - Cell", suite.Owner.PhoneCell, 90)
-	field("Owner Phone # - Home", suite.Owner.PhoneHome, 90)
-	field("Owner Phone # - Business", suite.Owner.PhoneBusiness, 90)
+	ownerName := strings.TrimSpace(suite.Owner.OwnerName)
+	ownerAddr := strings.TrimSpace(suite.Owner.Address)
+	ownerCell := strings.TrimSpace(suite.Owner.PhoneCell)
+	ownerHome := strings.TrimSpace(suite.Owner.PhoneHome)
+	ownerBiz := strings.TrimSpace(suite.Owner.PhoneBusiness)
+	if suite.OwnerIsResident && ownerName == "" && ownerAddr == "" && ownerCell == "" && ownerHome == "" && ownerBiz == "" {
+		// No separate owner row is stored when the owner lives in the
+		// unit (see store/save.go) — show the first resident so the
+		// printout is not blank.
+		if len(suite.Residents) > 0 {
+			ownerName = strings.TrimSpace(strings.TrimSpace(suite.Residents[0].FirstName) + " " + strings.TrimSpace(suite.Residents[0].LastName))
+			if ownerName == "" {
+				ownerName = "Same as resident"
+			} else {
+				ownerName += " (resident)"
+			}
+			ownerAddr = "Same as unit"
+			ownerCell = suite.Residents[0].PhoneCell
+			ownerHome = suite.Residents[0].PhoneHome
+			ownerBiz = suite.Residents[0].PhoneBusiness
+		} else {
+			ownerName = "Same as resident"
+			ownerAddr = "Same as unit"
+		}
+	}
+	// Owner name and address each get the full row so long
+	// addresses are never clipped off the right edge.
+	field("Owner", ownerName, pageW)
+	line()
+	field("Owner Address", ownerAddr, pageW)
+	line()
+	phoneW := pageW / 3
+	field("Owner Phone # - Cell", ownerCell, phoneW)
+	field("Owner Phone # - Home", ownerHome, phoneW)
+	field("Owner Phone # - Business", ownerBiz, phoneW)
 	line()
 
 	section("RESIDENTS")
-	residentWidths := []float64{32, 32, 12, 10, 30, 30, 30, 54, 54}
+	// Weights are scaled to exactly fill the printable width so the
+	// underlines neither fall short nor run off the page.
+	residentWeights := []float64{32, 32, 12, 10, 30, 30, 30, 54, 54}
+	residentWidths := scaleWidths(residentWeights, pageW)
 	residentHeaders := []string{"First Name", "Last Name", "Child", "Age", "Phone # - Cell", "Phone # - Home", "Phone # - Business", "Medical Notes", "Fire Dept Notes"}
 	pdf.SetFont("Arial", "B", 6)
 	for i, header := range residentHeaders {
@@ -543,14 +603,14 @@ func (app *App) handlePDF(w http.ResponseWriter, r *http.Request) {
 	pdf.Ln(4)
 	if len(suite.Residents) == 0 {
 		pdf.SetFont("Arial", "", 7)
-		pdf.CellFormat(284, 4, "None listed", "B", 1, "L", false, 0, "")
+		pdf.CellFormat(pageW, 4, "None listed", "B", 1, "L", false, 0, "")
 	}
 	for _, value := range suite.Residents {
 		age := ""
 		if value.ChildAge != nil {
 			age = strconv.Itoa(*value.ChildAge)
 		}
-		values := []string{value.FirstName, value.LastName, strconv.FormatBool(value.IsChild), age, value.PhoneCell, value.PhoneHome, value.PhoneBusiness, value.MedicalNotes, value.FireNotes}
+		values := []string{value.FirstName, value.LastName, yesNo(value.IsChild), age, value.PhoneCell, value.PhoneHome, value.PhoneBusiness, value.MedicalNotes, value.FireNotes}
 		pdf.SetFont("Arial", "", 6)
 		for i, text := range values {
 			pdf.CellFormat(residentWidths[i], 4, text, "B", 0, "L", false, 0, "")
@@ -560,17 +620,48 @@ func (app *App) handlePDF(w http.ResponseWriter, r *http.Request) {
 
 	pdf.Ln(2)
 	section("VEHICLES / PARKING / LOCKERS")
-	left := "Vehicles:"
+	vehicleParts := make([]string, 0, len(suite.Vehicles))
 	for i, value := range suite.Vehicles {
-		left += fmt.Sprintf(" %d) %s / %s / %s;", i+1, value.MakeModel, value.Year, value.PlateNumber)
+		vehicleParts = append(vehicleParts, fmt.Sprintf("%d) %s / %s / %s", i+1, value.MakeModel, value.Year, value.PlateNumber))
 	}
-	field("", left, 150)
-	right := fmt.Sprintf("Parking: %s    Lockers: %s", strings.Join(suite.ParkingSpots, ", "), strings.Join(suite.Lockers, ", "))
-	field("", right, 134)
-	line()
+	if len(vehicleParts) == 0 {
+		vehicleParts = []string{"None listed"}
+	}
+	parkingText := strings.Join(suite.ParkingSpots, ", ")
+	if parkingText == "" {
+		parkingText = "—"
+	}
+	lockersText := strings.Join(suite.Lockers, ", ")
+	if lockersText == "" {
+		lockersText = "—"
+	}
+	// First line: Vehicles label + 1st vehicle + Parking + Lockers.
+	// Subsequent vehicles stack below, indented to align under the 1st.
+	pdf.SetFont("Arial", "B", 7)
+	pdf.CellFormat(18, 4.5, "Vehicles:", "B", 0, "L", false, 0, "")
+	pdf.SetFont("Arial", "", 7)
+	pdf.CellFormat(109, 4.5, vehicleParts[0], "B", 0, "L", false, 0, "")
+	pdf.SetFont("Arial", "B", 7)
+	pdf.CellFormat(15, 4.5, "Parking:", "B", 0, "L", false, 0, "")
+	pdf.SetFont("Arial", "", 7)
+	pdf.CellFormat(55, 4.5, parkingText, "B", 0, "L", false, 0, "")
+	pdf.SetFont("Arial", "B", 7)
+	pdf.CellFormat(15, 4.5, "Lockers:", "B", 0, "L", false, 0, "")
+	pdf.SetFont("Arial", "", 7)
+	pdf.CellFormat(51, 4.5, lockersText, "B", 0, "L", false, 0, "")
+	pdf.Ln(4.5)
+	for _, text := range vehicleParts[1:] {
+		pdf.CellFormat(18, 4.5, "", "B", 0, "L", false, 0, "")
+		pdf.SetFont("Arial", "", 7)
+		pdf.CellFormat(109, 4.5, text, "B", 0, "L", false, 0, "")
+		pdf.CellFormat(136, 4.5, "", "B", 0, "L", false, 0, "")
+		pdf.Ln(4.5)
+	}
+	pdf.Ln(0.5)
 
 	section("EMERGENCY CONTACTS")
-	contactWidths := []float64{38, 30, 58, 34, 34, 34, 56}
+	contactWeights := []float64{38, 30, 58, 34, 34, 34, 56}
+	contactWidths := scaleWidths(contactWeights, pageW)
 	contactHeaders := []string{"Name", "Relationship", "Address", "Phone # - Cell", "Phone # - Home", "Phone # - Business", "Notes"}
 	pdf.SetFont("Arial", "B", 6)
 	for i, header := range contactHeaders {
@@ -579,7 +670,7 @@ func (app *App) handlePDF(w http.ResponseWriter, r *http.Request) {
 	pdf.Ln(4)
 	if len(suite.EmergencyContacts) == 0 {
 		pdf.SetFont("Arial", "", 7)
-		pdf.CellFormat(284, 4, "None listed", "B", 1, "L", false, 0, "")
+		pdf.CellFormat(pageW, 4, "None listed", "B", 1, "L", false, 0, "")
 	}
 	for _, value := range suite.EmergencyContacts {
 		values := []string{value.ContactName, value.Relationship, value.Address, value.PhoneCell, value.PhoneHome, value.PhoneBusiness, value.Notes}
@@ -665,6 +756,31 @@ func (app *App) saveSuite(ctx context.Context, suite Suite) error {
 func writeJSON(w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(value)
+}
+
+// scaleWidths scales relative column weights so they sum to exactly
+// total, fixing rounding drift on the last column. This keeps table
+// underlines flush with the printable width: no short lines, no
+// overflow off the page.
+func scaleWidths(weights []float64, total float64) []float64 {
+	sum := 0.0
+	for _, w := range weights {
+		sum += w
+	}
+	if sum <= 0 {
+		return weights
+	}
+	out := make([]float64, len(weights))
+	acc := 0.0
+	for i, w := range weights {
+		if i == len(weights)-1 {
+			out[i] = total - acc
+		} else {
+			out[i] = w / sum * total
+			acc += out[i]
+		}
+	}
+	return out
 }
 
 func logging(next http.Handler) http.Handler {
