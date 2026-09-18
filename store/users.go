@@ -24,12 +24,16 @@ func UserExists(ctx context.Context, db *sql.DB, username string) (bool, error) 
 }
 
 func CreateUser(ctx context.Context, db *sql.DB, username, password string, isAdmin bool) error {
+	return CreateUserWithProfile(ctx, db, username, password, isAdmin, "", "")
+}
+
+func CreateUserWithProfile(ctx context.Context, db *sql.DB, username, password string, isAdmin bool, displayName, phone string) error {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
-	_, err = db.ExecContext(ctx, `INSERT INTO users(username,password_hash,is_admin,created_at) VALUES(?,?,?,?)`,
-		username, string(hash), isAdmin, time.Now().Format(time.RFC3339))
+	_, err = db.ExecContext(ctx, `INSERT INTO users(username,password_hash,is_admin,created_at,display_name,phone) VALUES(?,?,?,?,?,?)`,
+		username, string(hash), isAdmin, time.Now().Format(time.RFC3339), displayName, phone)
 	return err
 }
 
@@ -50,7 +54,7 @@ func FindUser(ctx context.Context, db *sql.DB, username, password string) (bool,
 }
 
 func ListUsers(ctx context.Context, db *sql.DB) ([]User, error) {
-	rows, err := db.QueryContext(ctx, `SELECT username, is_admin, created_at FROM users ORDER BY username`)
+	rows, err := db.QueryContext(ctx, `SELECT username, is_admin, created_at, COALESCE(display_name,''), COALESCE(phone,'') FROM users ORDER BY username`)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +62,7 @@ func ListUsers(ctx context.Context, db *sql.DB) ([]User, error) {
 	var users []User
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.Username, &u.IsAdmin, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.Username, &u.IsAdmin, &u.CreatedAt, &u.DisplayName, &u.Phone); err != nil {
 			return nil, err
 		}
 		users = append(users, u)
@@ -111,10 +115,17 @@ func UpdatePassword(ctx context.Context, db *sql.DB, username, password string) 
 	return err
 }
 
+func UpdateProfile(ctx context.Context, db *sql.DB, username, displayName, phone string) error {
+	_, err := db.ExecContext(ctx, `UPDATE users SET display_name=?, phone=? WHERE username=?`, displayName, phone, username)
+	return err
+}
+
 type User struct {
-	Username  string `json:"username"`
-	IsAdmin   bool   `json:"is_admin"`
-	CreatedAt string `json:"created_at"`
+	Username    string `json:"username"`
+	IsAdmin     bool   `json:"is_admin"`
+	CreatedAt   string `json:"created_at"`
+	DisplayName string `json:"display_name"`
+	Phone       string `json:"phone"`
 }
 
 type LoginHash struct {

@@ -25,18 +25,21 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-//go:embed templates/login.html templates/units.html templates/edit.html templates/fire.html templates/admin.html
+//go:embed templates/login.html templates/units.html templates/edit.html templates/fire.html templates/admin.html templates/nav.html templates/directory.html
 var templateFS embed.FS
 
 var suitePattern = regexp.MustCompile(`^[A-Za-z0-9]{3,4}$`)
 
 type App struct {
-	db       *sql.DB
-	loginTpl *template.Template
-	unitsTpl *template.Template
-	editTpl  *template.Template
-	fireTpl  *template.Template
-	adminTpl *template.Template
+	db        *sql.DB
+	dbPath    string
+	auditPath string
+	loginTpl  *template.Template
+	unitsTpl  *template.Template
+	editTpl   *template.Template
+	fireTpl   *template.Template
+	adminTpl  *template.Template
+	directoryTpl *template.Template
 }
 
 type Suite = store.Suite
@@ -76,12 +79,13 @@ func main() {
 	}
 	defer db.Close()
 
-	loginTpl := template.Must(template.ParseFS(templateFS, "templates/login.html"))
-	unitsTpl := template.Must(template.ParseFS(templateFS, "templates/units.html"))
-	editTpl := template.Must(template.ParseFS(templateFS, "templates/edit.html"))
-	fireTpl := template.Must(template.ParseFS(templateFS, "templates/fire.html"))
-	adminTpl := template.Must(template.ParseFS(templateFS, "templates/admin.html"))
-	app := &App{db: db, loginTpl: loginTpl, unitsTpl: unitsTpl, editTpl: editTpl, fireTpl: fireTpl, adminTpl: adminTpl}
+	loginTpl := template.Must(template.ParseFS(templateFS, "templates/login.html", "templates/nav.html"))
+	unitsTpl := template.Must(template.ParseFS(templateFS, "templates/units.html", "templates/nav.html"))
+	editTpl := template.Must(template.ParseFS(templateFS, "templates/edit.html", "templates/nav.html"))
+	fireTpl := template.Must(template.ParseFS(templateFS, "templates/fire.html", "templates/nav.html"))
+	adminTpl := template.Must(template.ParseFS(templateFS, "templates/admin.html", "templates/nav.html"))
+	directoryTpl := template.Must(template.ParseFS(templateFS, "templates/directory.html", "templates/nav.html"))
+	app := &App{db: db, dbPath: databasePath, auditPath: auditPathFor(databasePath), loginTpl: loginTpl, unitsTpl: unitsTpl, editTpl: editTpl, fireTpl: fireTpl, adminTpl: adminTpl, directoryTpl: directoryTpl}
 	mux := http.NewServeMux()
 	mux.Handle("/login", loadUser(app)(http.HandlerFunc(app.handleLogin)))
 	mux.Handle("/logout", loadUser(app)(http.HandlerFunc(app.handleLogout)))
@@ -92,10 +96,12 @@ func main() {
 	mux.Handle("/admin", loadUser(app)(requireAdmin(app)(http.HandlerFunc(app.handleAdminPage))))
 	mux.Handle("/admin/users", loadUser(app)(requireAdmin(app)(http.HandlerFunc(app.handleAdminUsers))))
 	mux.Handle("/admin/users/", loadUser(app)(requireAdmin(app)(http.HandlerFunc(app.handleAdminUserAction))))
+	mux.Handle("/directory", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleDirectoryPage))))
+	mux.Handle("/api/directory", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleDirectoryJSON))))
 	mux.Handle("/", loadUser(app)(http.HandlerFunc(app.handleIndex)))
 	mux.Handle("/api/search", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleSearch))))
 	mux.Handle("/api/units", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleUnits))))
-	mux.Handle("/export/spreadsheet", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleSpreadsheet))))
+	mux.Handle("/export/spreadsheet", loadUser(app)(requireAdmin(app)(http.HandlerFunc(app.handleSpreadsheet))))
 	mux.Handle("/suite/pdf/", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handlePDF))))
 	mux.Handle("/suite/", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleSuite))))
 	mux.Handle("/suite/save", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleSave))))
@@ -168,6 +174,60 @@ func (app *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
+// auditPathFor keeps the change log next to the database file so each
+// environment (live DB, test DB, dummy DB) gets its own log.
+func auditPathFor(dbPath string) string {
+	ext := ""
+	base := dbPath
+	if i := strings.LastIndex(base, "."); i >= 0 {
+		ext = base[i:]
+		base = base[:i]
+	}
+	if ext == "" {
+		return base + ".audit.log"
+	}
+	return base + ".audit.log"
+}
+
+func (app *App) logChange(action, target, detail string, r *http.Request) {
+	actor := getUser(r)
+	if actor == "" {
+		actor = "(cli)"
+	}
+	if err := store.RecordAudit(r.Context(), app.db, actor, action, target, detail); err != nil {
+		log.Printf("audit db log failed: %v", err)
+	}
+	// Append to a plain-text log file next to the DB: timestamp, actor,
+	// action, target, and the changed data as compact JSON/text.
+	line := fmt.Sprintf("%s actor=%q action=%s target=%s %s\n",
+		time.Now().Format(time.RFC3339), actor, action, target, detail)
+	if f, err := os.OpenFile(app.auditPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err != nil {
+		log.Printf("audit file log failed: %v", err)
+	} else {
+		_, _ = f.WriteString(line)
+		f.Close()
+	}
+}
+
+func auditDetail(value any) string {
+	b, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprintf("%v", value)
+	}
+	return string(b)
+}
+
+func pageData(r *http.Request, extra map[string]any) map[string]any {
+	data := map[string]any{
+		"CurrentUser": getUser(r),
+		"IsAdmin":     isAdmin(r),
+	}
+	for k, v := range extra {
+		data[k] = v
+	}
+	return data
+}
+
 func (app *App) handleAdminPage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.NotFound(w, r)
@@ -178,7 +238,12 @@ func (app *App) handleAdminPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	app.adminTpl.Execute(w, map[string]any{"users": users, "currentUser": getUser(r)})
+	audit, err := store.ListAudit(r.Context(), app.db, 200)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	app.adminTpl.Execute(w, pageData(r, map[string]any{"users": users, "currentUser": getUser(r), "audit": audit}))
 }
 
 func (app *App) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
@@ -188,6 +253,8 @@ func (app *App) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	username := strings.TrimSpace(r.FormValue("username"))
 	password := r.FormValue("password")
+	displayName := strings.TrimSpace(r.FormValue("display_name"))
+	phone := strings.TrimSpace(r.FormValue("phone"))
 	isAdmin := r.FormValue("is_admin") == "1"
 	if username == "" || password == "" {
 		http.Error(w, "Username and password are required.", http.StatusBadRequest)
@@ -198,10 +265,13 @@ func (app *App) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "User already exists.", http.StatusConflict)
 		return
 	}
-	if err := store.CreateUser(r.Context(), app.db, username, password, isAdmin); err != nil {
+	if err := store.CreateUserWithProfile(r.Context(), app.db, username, password, isAdmin, displayName, phone); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	app.logChange("user.create", "user:"+username, auditDetail(map[string]any{
+		"username": username, "is_admin": isAdmin, "display_name": displayName, "phone": phone,
+	}), r)
 	http.Redirect(w, r, "/admin", http.StatusFound)
 }
 
@@ -211,22 +281,27 @@ func (app *App) handleAdminUserAction(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	rest := strings.TrimPrefix(r.URL.Path, prefix)
-	username := strings.Trim(strings.TrimSuffix(rest, "/toggle-admin"), "/")
-	if username == "" || strings.Contains(username, "/") {
+	rest := strings.Trim(strings.TrimPrefix(r.URL.Path, prefix), "/")
+	parts := strings.Split(rest, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		http.NotFound(w, r)
 		return
 	}
+	username, action := parts[0], parts[1]
 	currentUser := getUser(r)
-	switch {
-	case strings.HasSuffix(rest, "/toggle-admin"):
+	switch action {
+	case "toggle-admin":
 		if username == currentUser {
 			http.Error(w, "You cannot change your own admin status.", http.StatusForbidden)
 			return
 		}
 		admin, _ := store.IsAdmin(r.Context(), app.db, username)
-		store.SetAdmin(r.Context(), app.db, username, !admin)
-	case strings.HasSuffix(rest, "/password"):
+		if err := store.SetAdmin(r.Context(), app.db, username, !admin); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		app.logChange("user.set-admin", "user:"+username, auditDetail(map[string]any{"username": username, "is_admin": !admin}), r)
+	case "password":
 		if r.Method != http.MethodPost {
 			http.Error(w, "POST required", http.StatusMethodNotAllowed)
 			return
@@ -236,13 +311,39 @@ func (app *App) handleAdminUserAction(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Password is required.", http.StatusBadRequest)
 			return
 		}
-		store.UpdatePassword(r.Context(), app.db, username, password)
-	case r.Method == http.MethodDelete || r.Method == http.MethodPost && strings.HasSuffix(rest, "/delete"):
+		if err := store.UpdatePassword(r.Context(), app.db, username, password); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		app.logChange("user.password-reset", "user:"+username, auditDetail(map[string]any{"username": username}), r)
+	case "profile":
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST required", http.StatusMethodNotAllowed)
+			return
+		}
+		displayName := strings.TrimSpace(r.FormValue("display_name"))
+		phone := strings.TrimSpace(r.FormValue("phone"))
+		if err := store.UpdateProfile(r.Context(), app.db, username, displayName, phone); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		app.logChange("user.profile-update", "user:"+username, auditDetail(map[string]any{
+			"username": username, "display_name": displayName, "phone": phone,
+		}), r)
+	case "delete":
+		if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+			http.Error(w, "POST required", http.StatusMethodNotAllowed)
+			return
+		}
 		if username == currentUser {
 			http.Error(w, "You cannot delete your own account.", http.StatusForbidden)
 			return
 		}
-		store.DeleteUser(r.Context(), app.db, username)
+		if err := store.DeleteUser(r.Context(), app.db, username); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		app.logChange("user.delete", "user:"+username, auditDetail(map[string]any{"username": username}), r)
 	default:
 		http.NotFound(w, r)
 		return
@@ -255,19 +356,51 @@ func (app *App) handleAdminUserAction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) handleUnitsPage(w http.ResponseWriter, r *http.Request) {
-	if err := app.unitsTpl.Execute(w, nil); err != nil {
+	if err := app.unitsTpl.Execute(w, pageData(r, nil)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
 func (app *App) handleEditPage(w http.ResponseWriter, r *http.Request) {
-	if err := app.editTpl.Execute(w, nil); err != nil {
+	if err := app.editTpl.Execute(w, pageData(r, nil)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
+func (app *App) handleDirectoryPage(w http.ResponseWriter, r *http.Request) {
+	if err := app.directoryTpl.Execute(w, pageData(r, nil)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (app *App) handleDirectoryJSON(w http.ResponseWriter, r *http.Request) {
+	users, err := store.ListUsers(r.Context(), app.db)
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	type entry struct {
+		Name  string `json:"name"`
+		Phone string `json:"phone"`
+	}
+	out := make([]entry, 0, len(users))
+	for _, u := range users {
+		// Display name + phone only — never expose the login username.
+		name := strings.TrimSpace(u.DisplayName)
+		phone := strings.TrimSpace(u.Phone)
+		if name == "" {
+			continue
+		}
+		out = append(out, entry{Name: name, Phone: phone})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+	})
+	writeJSON(w, out)
+}
+
 func (app *App) handleFirePage(w http.ResponseWriter, r *http.Request) {
-	if err := app.fireTpl.Execute(w, nil); err != nil {
+	if err := app.fireTpl.Execute(w, pageData(r, nil)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -752,6 +885,7 @@ func (app *App) handleSave(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
+	app.logChange("suite.save", "suite:"+suite.SuiteID, auditDetail(suite), r)
 	saved, err := app.loadSuite(r.Context(), suite.SuiteID)
 	if err != nil {
 		http.Error(w, err.Error(), 500)

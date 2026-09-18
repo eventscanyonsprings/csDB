@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canyon Springs Residents — Staff Directory</title>
+<style>
+:root{--ink:#173042;--muted:#61727d;--panel:#fffdf8;--line:#d7d8d1;--teal:#1f7271;--shadow:0 14px 35px #17304212}
+*{box-sizing:border-box}body{margin:0;color:var(--ink);background:radial-gradient(circle at 10% 0%,#fff8df 0 18%,transparent 38%),linear-gradient(135deg,#f1eee6,#eaf1ee);font:15px/1.45 "Segoe UI",Tahoma,sans-serif}
+main{max-width:700px;margin:auto;padding:28px 20px 70px}
+.masthead{display:flex;justify-content:space-between;align-items:end;gap:20px;border-bottom:2px solid var(--ink);padding:12px 0 20px}
+.eyebrow{font:700 11px/1.2 system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--teal)}
+h1{margin:0;font-weight:500;font-size:clamp(28px,4vw,40px);line-height:1}
+.meta{font:14px system-ui,sans-serif;color:var(--muted);text-align:right}
+.search{margin:24px 0 12px}.search input{width:100%;padding:14px 16px;border:1px solid var(--line);border-radius:3px;background:#fffdfac9;color:var(--ink);font:17px "Segoe UI",Tahoma,sans-serif;box-shadow:var(--shadow)}
+.search input::placeholder{color:var(--muted);opacity:1}
+.count{font:12px system-ui,sans-serif;color:var(--muted);margin:0 0 8px}
+.list{background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow)}
+.row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row strong{font-size:16px;font-weight:600}
+.row a{color:var(--teal);font-weight:600;text-decoration:none;white-space:nowrap}
+.row a:hover{text-decoration:underline}
+.empty{padding:22px;text-align:center;color:var(--muted)}
+:root[data-theme="dark"]{--ink:#e6edf3;--muted:#8b9eb0;--panel:#1b242c;--line:#2d3843;--teal:#3dbdb6;--shadow:0 14px 35px #00000050}
+:root[data-theme="dark"] body{background:radial-gradient(circle at 10% 0%,#1b242c 0 18%,transparent 38%),linear-gradient(135deg,#12161b,#0f1418)}
+:root[data-theme="dark"] .search input{background:#12181d;color:#e6edf3}
+</style>
+<script>
+(function(){try{if(localStorage.getItem('cs_theme')==='dark'){document.documentElement.setAttribute('data-theme','dark');}}catch(e){}}());
+function toggleTheme(){var h=document.documentElement,d=h.getAttribute('data-theme')==='dark'?'':'dark';h.setAttribute('data-theme',d);try{localStorage.setItem('cs_theme',d);}catch(e){}}
+</script>
+</head>
+<body><main>
+<header class="masthead"><div><div class="eyebrow">Canyon Springs · Resident records</div><h1>Staff Directory</h1></div><div class="meta">{{template "nav" .}}</div></header>
+<div class="search"><input id="q" autocomplete="off" autofocus placeholder="Filter by name or phone…"></div>
+<p class="count" id="count"></p>
+<div class="list" id="list"><div class="empty">Loading directory…</div></div>
+</main>
+<script>
+const $=s=>document.querySelector(s), esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+let all=[];
+async function load(){try{let r=await fetch('/api/directory');all=await r.json();render();}catch(e){document.getElementById('list').innerHTML='<div class="empty">Unable to load directory.</div>';}}
+function render(){let q=document.getElementById('q').value.trim().toLowerCase();
+let f=all.filter(x=>{if(!q)return true;return (x.name||'').toLowerCase().includes(q)||(x.phone||'').toLowerCase().includes(q);});
+document.getElementById('count').textContent=f.length+' of '+all.length+' people';
+document.getElementById('list').innerHTML=f.map(x=>{let phone=(x.phone||'').trim();let phoneHtml=phone?'<a href="tel:'+esc(phone.replace(/[^0-9+]/g,''))+'">'+esc(phone)+'</a>':'<span style="color:var(--muted)">—</span>';return '<div class="row"><strong>'+(esc(x.name)||'<span style="color:var(--muted)">(no name)</span>')+'</strong>'+phoneHtml+'</div>';}).join('')||'<div class="empty">No people match.</div>';}
+document.getElementById('q').addEventListener('input',render);
+try{document.getElementById('q').focus();}catch(e){}
+load();
+</script></body></html>

@@ -1,0 +1,36 @@
+{{/* Shared hamburger menu. Expects .IsAdmin (bool) and .CurrentUser (string). */}}
+{{define "nav"}}
+<style>
+.csnav{position:relative;display:inline-block;text-align:left}
+.csnav-btn{border:1px solid var(--teal);background:transparent;color:var(--teal);font-size:20px;line-height:1;padding:6px 12px;border-radius:4px;cursor:pointer;font-weight:700}
+.csnav-btn:hover{background:var(--teal);color:#fff}
+.csnav-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:50;min-width:230px;background:var(--panel);border:1px solid var(--line);border-radius:6px;box-shadow:var(--shadow);padding:6px}
+.csnav-menu a,.csnav-menu button.csnav-item{display:flex;width:100%;align-items:center;gap:8px;box-sizing:border-box;padding:10px 12px;border:0;background:none;color:var(--ink);text-decoration:none;font:600 14px "Segoe UI",Tahoma,sans-serif;border-radius:4px;cursor:pointer;text-align:left}
+.csnav-menu a:hover,.csnav-menu button.csnav-item:hover{background:#edf5f1}
+:root[data-theme="dark"] .csnav-menu a:hover,:root[data-theme="dark"] .csnav-menu button.csnav-item:hover{background:#25313d}
+.csnav-sep{border:0;border-top:1px solid var(--line);margin:6px 4px}
+.csnav-user{display:block;padding:6px 12px 2px;font:12px system-ui,sans-serif;color:var(--muted)}
+</style>
+<div class="csnav">
+<button class="csnav-btn" id="csnavBtn" aria-label="Menu" aria-expanded="false" aria-haspopup="true" onclick="csNavToggle(event)">&#9776;</button>
+<div class="csnav-menu" id="csnavMenu" hidden>
+{{if .CurrentUser}}<span class="csnav-user">Signed in as <strong>{{.CurrentUser}}</strong></span>{{end}}
+<a href="/units">&#9679; All Units</a>
+<a href="/directory">&#9679; Staff Directory</a>
+<a href="/report/fire">&#9679; Fire Dept Report</a>
+{{if .IsAdmin}}<a href="/export/spreadsheet">&#9679; Export spreadsheet</a>{{end}}
+{{if .IsAdmin}}<a href="/admin">&#9679; Admin</a>{{end}}
+<hr class="csnav-sep">
+<button class="csnav-item" onclick="csNavTheme(event)"><span id="csnavThemeIcon">&#9790;</span>&nbsp;<span id="csnavThemeLabel">Dark mode</span></button>
+<form method="POST" action="/logout" style="margin:0"><button class="csnav-item" type="submit">&#9094;&nbsp;Sign out</button></form>
+</div>
+</div>
+<script>
+function csNavToggle(e){if(e)e.stopPropagation();var m=document.getElementById('csnavMenu'),b=document.getElementById('csnavBtn');if(!m||!b)return;var open=m.hasAttribute('hidden');if(open){m.removeAttribute('hidden');b.setAttribute('aria-expanded','true');}else{m.setAttribute('hidden','');b.setAttribute('aria-expanded','false');}}
+function csNavTheme(e){if(e)e.stopPropagation();toggleTheme();csNavSyncLabel();}
+function csNavSyncLabel(){try{var dark=document.documentElement.getAttribute('data-theme')==='dark';var l=document.getElementById('csnavThemeLabel');if(l)l.textContent=dark?'Light mode':'Dark mode';var i=document.getElementById('csnavThemeIcon');if(i)i.textContent=dark?'\u2600':'\u263E';var b=document.querySelector('.theme-btn');if(b)b.textContent=dark?'Light':'Dark';}catch(e){}}
+document.addEventListener('click',function(e){var m=document.getElementById('csnavMenu'),b=document.getElementById('csnavBtn');if(!m||m.hasAttribute('hidden'))return;if(e.target.closest&&e.target.closest('.csnav'))return;m.setAttribute('hidden','');if(b)b.setAttribute('aria-expanded','false');});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){var m=document.getElementById('csnavMenu'),b=document.getElementById('csnavBtn');if(m&&!m.hasAttribute('hidden')){m.setAttribute('hidden','');if(b)b.setAttribute('aria-expanded','false');}}});
+try{csNavSyncLabel();}catch(e){}
+</script>
+{{end}}

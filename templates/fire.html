@@ -33,14 +33,14 @@ function toggleTheme(){var h=document.documentElement,d=h.getAttribute('data-the
 </script>
 </head>
 <body><main>
-<header class="masthead"><div><div class="eyebrow">Canyon Springs · Resident records</div><h1>Fire Dept Report</h1></div><div class="meta"><button class="theme-btn" onclick="toggleTheme()">Dark</button><br><a href="/units">&larr; All Units</a> · <a href="/admin">Admin</a> · <form method="POST" action="/logout" style="display:inline"><button style="background:none;border:0;padding:0;color:var(--teal);font-weight:700;cursor:pointer;font-size:13px">Sign out</button></form><br><span id="today"></span></div></header>
-<div class="tools"><span id="count">Loading…</span><button class="btn" onclick="window.print()">Print report</button></div>
+<header class="masthead"><div><div class="eyebrow">Canyon Springs · Resident records</div><h1>Fire Dept Report</h1></div><div class="meta">{{template "nav" .}}</div></header>
+<div class="tools"><span><span id="count">Loading…</span> · <span id="today"></span></span><button class="btn" onclick="window.print()">Print report</button></div>
 <div id="report"><div class="empty">Loading report…</div></div>
 </main>
 <script>
 const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 
-document.getElementById('today').textContent=new Intl.DateTimeFormat('en',{dateStyle:'long'}).format(new Date());
+var todayEl=document.getElementById('today');if(todayEl){todayEl.textContent=new Intl.DateTimeFormat('en',{dateStyle:'long'}).format(new Date());}
 function phones(r){return [r.phone_cell,r.phone_home,r.phone_business].filter(Boolean).join(' / ')||'—';}
 function cphones(c){return [c.phone_cell,c.phone_home,c.phone_business].filter(Boolean).join(' / ')||'—';}
 async function load(){try{

@@ -117,5 +117,34 @@ func Initialize(db *sql.DB) error {
 	if err == sql.ErrNoRows {
 		_, err = db.Exec(`ALTER TABLE emergency_contacts ADD COLUMN notes TEXT DEFAULT ''`)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS audit_logs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		created_at TEXT NOT NULL DEFAULT '',
+		actor TEXT NOT NULL DEFAULT '',
+		action TEXT NOT NULL DEFAULT '',
+		target TEXT NOT NULL DEFAULT '',
+		detail TEXT NOT NULL DEFAULT ''
+	)`)
+	if err != nil {
+		return err
+	}
+	// User profile fields (name + phone, added after initial schema).
+	for _, col := range []struct{ name, ddl string }{
+		{"display_name", `ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`},
+		{"phone", `ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''`},
+	} {
+		var found string
+		err = db.QueryRow(`SELECT name FROM pragma_table_info('users') WHERE name='` + col.name + `'`).Scan(&found)
+		if err == sql.ErrNoRows {
+			if _, err = db.Exec(col.ddl); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+	}
+	return nil
 }

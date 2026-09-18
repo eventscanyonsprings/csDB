@@ -16,7 +16,7 @@ func LoadSuite(ctx context.Context, db *sql.DB, id string) (Suite, error) {
 	suite.Vehicles = []Vehicle{}
 	suite.ParkingSpots = []string{}
 	suite.Lockers = []string{}
-	rows, err := db.QueryContext(ctx, `SELECT first_name,last_name,is_child,child_age,phone_cell,phone_home,phone_business,medical_notes,fire_notes FROM residents WHERE suite_id=? ORDER BY id`, id)
+	rows, err := db.QueryContext(ctx, `SELECT COALESCE(first_name,''),COALESCE(last_name,''),is_child,child_age,COALESCE(phone_cell,''),COALESCE(phone_home,''),COALESCE(phone_business,''),COALESCE(medical_notes,''),COALESCE(fire_notes,'') FROM residents WHERE suite_id=? ORDER BY id`, id)
 	if err != nil {
 		return suite, err
 	}

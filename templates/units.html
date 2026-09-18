@@ -36,7 +36,7 @@ function toggleTheme(){var h=document.documentElement,d=h.getAttribute('data-the
 </script>
 </head>
 <body><main>
-<header class="masthead"><div><div class="eyebrow">Canyon Springs · Resident records</div><h1>All Units</h1></div><div class="meta"><button class="theme-btn" onclick="toggleTheme()">Dark</button><br><a href="/export/spreadsheet">Export spreadsheet</a> · <a href="/report/fire">Fire Dept Rpt</a> · <a href="/admin">Admin</a> · <form method="POST" action="/logout" style="display:inline"><button style="background:none;border:0;padding:0;color:var(--teal);font-weight:700;cursor:pointer;font-size:15px">Sign out</button></form></div></header>
+<header class="masthead"><div><div class="eyebrow">Canyon Springs · Resident records</div><h1>All Units</h1></div><div class="meta">{{template "nav" .}}</div></header>
 <div class="search"><input id="q" autocomplete="off" autofocus placeholder="Filter by unit, name, plate, parking spot, or locker…"></div>
 <p class="count" id="count"></p>
 <div class="list" id="list"><div class="empty">Loading units…</div></div>
