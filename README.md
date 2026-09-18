@@ -3,7 +3,7 @@ Web app for Canyon Springs residents and suites data.
 
 Go + SQLite (modernc.org/sqlite). Templates in templates/, DB logic in store/, dev tools in tools/, dummy-data seeder in seed/.
 
-Run from this directory (where go.mod lives). DB defaults to ./canyon-springs.db, override with CANYON_DB. HTTP defaults to :8081, override with CANYON_ADDR.
+Run from this directory (where go.mod lives). DB defaults to ./canyon-springs.db, override with `-db PATH`, a positional `PATH` arg, or CANYON_DB (priority: -db > positional arg > CANYON_DB). HTTP defaults to :8081, override with `-addr ADDR` or CANYON_ADDR (flag wins).
 
 ## Files in this directory
 
@@ -32,7 +32,46 @@ Keeps local and generated files out of git: server.exe, the real canyon-springs.
 The live data file (suites, residents, contacts, vehicles, users, sessions). Auto-created and migrated by store.Open and store.Initialize on first open, so deleting it means fresh start (you must re-create a user via tools/create-admin, see tools/README.md). Git-ignored, do not commit.
 
 ### server.exe (built binary)
-Compiled server from go build (about 19 MB). Run it with server.exe. Git-ignored. Rebuild after changing Go files or templates (templates are embedded via go:embed, so template edits also need a rebuild).
+Compiled server from go build (about 19 MB). Git-ignored. Rebuild after changing Go files or templates (templates are embedded via go:embed, so template edits also need a rebuild).
+
+Default run (uses ./canyon-springs.db on :8081):
+
+```powershell
+.\server.exe
+```
+
+Pass a different database directly (no env var needed).
+The file is auto-created and migrated on first open, so pointing at a
+non-existent path gives you a fresh DB:
+
+```powershell
+.\server.exe -db C:\data\other.db
+.\server.exe C:\data\other.db
+.\server.exe -db C:\data\other.db -addr :8099
+```
+
+Env-var form still works (useful for scripts/services):
+
+```powershell
+$env:CANYON_DB="C:\data\other.db"; .\server.exe
+```
+
+```cmd
+set CANYON_DB=C:\data\other.db && server.exe
+```
+
+```powershell
+$env:CANYON_DB="C:\data\other.db"; $env:CANYON_ADDR=":8099"; .\server.exe
+Remove-Item Env:\CANYON_DB  # back to default ./canyon-springs.db
+```
+
+Priority: `-db` beats the positional path beats `CANYON_DB`;
+`-addr` beats `CANYON_ADDR`. Flags must come before the positional path
+(`server.exe -addr :8099 my.db`, not `server.exe my.db -addr :8099`).
+
+Tips: use an absolute path so the DB does not depend on the working
+directory. On a fresh DB you must create a user first — use the same path
+for both: `go run ./tools/create-admin -db C:\data\other.db -user admin -pass "ChangeMe123!" -admin` (see tools/README.md).
 
 ## Directories (for context)
 

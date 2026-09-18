@@ -7,6 +7,7 @@ import (
 	"embed"
 	"encoding/csv"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"html/template"
 	"log"
@@ -54,7 +55,18 @@ type SearchResult struct {
 }
 
 func main() {
-	databasePath := os.Getenv("CANYON_DB")
+	dbFlag := flag.String("db", "", "path to SQLite database file (overrides CANYON_DB, default ./canyon-springs.db)")
+	addrFlag := flag.String("addr", "", "HTTP listen address (overrides CANYON_ADDR, default :8081)")
+	flag.Parse()
+
+	databasePath := *dbFlag
+	if databasePath == "" {
+		if arg := flag.Arg(0); arg != "" {
+			databasePath = arg
+		} else {
+			databasePath = os.Getenv("CANYON_DB")
+		}
+	}
 	if databasePath == "" {
 		databasePath = "canyon-springs.db"
 	}
@@ -88,7 +100,10 @@ func main() {
 	mux.Handle("/suite/", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleSuite))))
 	mux.Handle("/suite/save", loadUser(app)(requireAuth(app)(http.HandlerFunc(app.handleSave))))
 
-	address := os.Getenv("CANYON_ADDR")
+	address := *addrFlag
+	if address == "" {
+		address = os.Getenv("CANYON_ADDR")
+	}
 	if address == "" {
 		address = ":8081"
 	}
